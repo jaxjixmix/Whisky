@@ -4,17 +4,16 @@
   *Wine but a bit stronger*
 
   > **Active community fork.** The original [whisky-app/whisky](https://github.com/whisky-app/whisky)
-  > was archived on April 9, 2025 with a final maintenance notice. This fork, maintained by
-  > [@frankea](https://github.com/frankea), continues development — addressing the backlog of
-  > upstream issues and adding new functionality. Not affiliated with the original project or
-  > getwhisky.app.
+  > was archived on April 9, 2025 with a final maintenance notice. This repository continues from
+  > [frankea/Whisky](https://github.com/frankea/Whisky) and is maintained here by
+  > [@jaxjixmix](https://github.com/jaxjixmix). Not affiliated with the original project or its website.
 
-  ![](https://img.shields.io/github/actions/workflow/status/frankea/Whisky/CI.yml?style=for-the-badge&label=CI)
-  [![](https://img.shields.io/codecov/c/github/frankea/Whisky?style=for-the-badge&logo=codecov&label=Coverage&flag=whiskykit)](https://codecov.io/gh/frankea/Whisky)
-  [![](https://img.shields.io/github/downloads/frankea/Whisky/total?style=for-the-badge&logo=github&label=Downloads)](https://github.com/frankea/Whisky/releases)
-  [![](https://img.shields.io/github/downloads/frankea/Whisky/latest/total?style=for-the-badge&label=Latest)](https://github.com/frankea/Whisky/releases/latest)
-  [![](https://img.shields.io/github/issues/frankea/Whisky?style=for-the-badge)](https://github.com/frankea/Whisky/issues)
-  [![Documentation](https://img.shields.io/badge/Documentation-DocC-blue?style=for-the-badge)](https://frankea.github.io/Whisky/documentation/whiskykit/)
+  ![](https://img.shields.io/github/actions/workflow/status/jaxjixmix/Whisky/CI.yml?style=for-the-badge&label=CI)
+  [![](https://img.shields.io/codecov/c/github/jaxjixmix/Whisky?style=for-the-badge&logo=codecov&label=Coverage&flag=whiskykit)](https://codecov.io/gh/jaxjixmix/Whisky)
+  [![](https://img.shields.io/github/downloads/jaxjixmix/Whisky/total?style=for-the-badge&logo=github&label=Downloads)](https://github.com/jaxjixmix/Whisky/releases)
+  [![](https://img.shields.io/github/downloads/jaxjixmix/Whisky/latest/total?style=for-the-badge&label=Latest)](https://github.com/jaxjixmix/Whisky/releases/latest)
+  [![](https://img.shields.io/github/issues/jaxjixmix/Whisky?style=for-the-badge)](https://github.com/jaxjixmix/Whisky/issues)
+  [![Documentation](https://img.shields.io/badge/Documentation-DocC-blue?style=for-the-badge)](https://jaxjixmix.github.io/Whisky/documentation/whiskykit/)
 </div>
 
 ## Overview
@@ -55,23 +54,24 @@ Whisky provides a clean and easy-to-use graphical wrapper for Wine built in nati
 
 ## Installation
 
-### Homebrew (recommended)
+### Download
 
-```sh
-brew install --cask frankea/whisky/whisky
-```
-
-This taps [frankea/homebrew-whisky](https://github.com/frankea/homebrew-whisky) and installs the latest signed/notarized DMG. `brew upgrade --cask` picks up new releases.
-
-> The default `brew install --cask whisky` still installs the **archived original** (last release April 2025) and always will until that cask is updated. Use the qualified `frankea/whisky/whisky` form to get this fork.
-
-### Manual
-
-1. Download the latest **[Whisky-X.Y.Z.dmg](https://github.com/frankea/Whisky/releases/latest)** (signed and notarized — Gatekeeper-approved).
+1. Download the latest **[Whisky-X.Y.Z.dmg](https://github.com/jaxjixmix/Whisky/releases/latest)** from this repository's Releases.
 2. Open the DMG and drag **Whisky.app** to **/Applications**.
 3. Launch Whisky. On first run it downloads the Wine runtime (~330 MB) and sets up your default bottle.
 
-In-app updates are delivered through Sparkle from `https://frankea.github.io/Whisky/appcast.xml`.
+> Builds are published from this repository. Until the first signed build is uploaded, the Releases page has no DMG — build from source below instead.
+
+In-app updates are delivered through Sparkle from `https://jaxjixmix.github.io/Whisky/appcast.xml` once a signed release is published.
+
+### Build from source
+
+```sh
+git clone https://github.com/jaxjixmix/Whisky.git
+cd Whisky && open Whisky.xcodeproj   # build the Whisky scheme
+```
+
+Requires Xcode 16 on macOS 15.0 or later.
 
 ### Migrating from the original Whisky
 
@@ -79,7 +79,7 @@ The original [whisky-app/whisky](https://github.com/whisky-app/whisky) was archi
 
 To switch:
 
-1. Install this fork: `brew install --cask frankea/whisky/whisky` or follow the manual steps above.
+1. Install this fork from its [Releases](https://github.com/jaxjixmix/Whisky/releases/latest) (or build from source above).
 2. Open it and choose **File → Migrate from the Original Whisky**. It finds the bottles the original app left in `~/Library/Containers/com.isaacmarovitz.Whisky/` and imports the ones you pick. Bottles are referenced **in place** — nothing is moved or copied — so the original app keeps working if you'd like to keep it around.
 3. *(Optional)* Once you're happy, remove the original app: drag **/Applications/Whisky.app** to the Trash, or `brew uninstall --cask whisky` if you installed it via Homebrew. Your bottles stay put.
 
@@ -87,7 +87,7 @@ The original app uses a different bundle identifier (`com.franke.Whisky` here vs
 
 ## Uninstalling
 
-Dragging **Whisky.app** to the Trash (or `brew uninstall --cask frankea/whisky/whisky`) removes the app but leaves the Wine runtime, your bottles, and app data behind — by design, so reinstalling doesn't re-download ~330 MB or lose your bottles.
+Dragging **Whisky.app** to the Trash removes the app but leaves the Wine runtime, your bottles, and app data behind — by design, so reinstalling doesn't re-download ~330 MB or lose your bottles.
 
 > ⚠️ **Back up your bottles first if you want to keep them.** Removing the container below deletes every bottle stored in its default location. Bottles you created in a custom folder live wherever you put them — check **Bottle → Reveal in Finder** before deleting anything.
 
@@ -95,7 +95,7 @@ To remove Whisky **completely**, delete the app and then these paths (all under 
 
 ```sh
 # 1. The app itself
-rm -rf "/Applications/Whisky.app"          # or: brew uninstall --cask frankea/whisky/whisky
+rm -rf "/Applications/Whisky.app"
 
 # 2. Bottles + bottle list (default bottle location is inside this container)
 rm -rf ~/Library/Containers/com.franke.Whisky
@@ -147,12 +147,10 @@ of this is tied to your identity.
 
 ## Translations
 
-Whisky is translated into 22 languages, and translations are managed on Crowdin.
-To help translate, or to fix a translation you've spotted, join the
-[Whisky Crowdin project](https://crowdin.com/project/frankea-whisky). If Crowdin
-asks you to join, use the access request prompt on the project page. New and
-updated translations sync into the app automatically, so please contribute
-there rather than by opening a pull request; see
+Whisky is translated into 22 languages. Translations come from the upstream
+fork's Crowdin project and sync into this repository with it. To help translate,
+or to fix a translation you've spotted, join the
+[Whisky Crowdin project](https://crowdin.com/project/frankea-whisky); see
 [CONTRIBUTING.md](CONTRIBUTING.md#localization) for how strings get from the
 code to Crowdin and back.
 
@@ -164,9 +162,9 @@ code to Crowdin and back.
 
 WhiskyKit, the core framework powering Whisky, has comprehensive API documentation:
 
-- **[WhiskyKit API Documentation](https://frankea.github.io/Whisky/documentation/whiskykit/)** - Full API reference with usage examples
-- **[Getting Started Guide](https://frankea.github.io/Whisky/documentation/whiskykit/gettingstarted)** - Learn how to integrate WhiskyKit
-- **[Architecture Overview](https://frankea.github.io/Whisky/documentation/whiskykit/architecture)** - Understand how WhiskyKit components work together
+- **[WhiskyKit API Documentation](https://jaxjixmix.github.io/Whisky/documentation/whiskykit/)** - Full API reference with usage examples
+- **[Getting Started Guide](https://jaxjixmix.github.io/Whisky/documentation/whiskykit/gettingstarted)** - Learn how to integrate WhiskyKit
+- **[Architecture Overview](https://jaxjixmix.github.io/Whisky/documentation/whiskykit/architecture)** - Understand how WhiskyKit components work together
 
 ### Troubleshooting
 
@@ -174,7 +172,7 @@ WhiskyKit, the core framework powering Whisky, has comprehensive API documentati
 - **[Steam Compatibility Guide](docs/SteamCompatibility.md)** - Detailed guide for Steam on Whisky
 - **[Stability Troubleshooting](docs/StabilityTroubleshooting.md)** - Diagnose crashes, freezes, reboots, and kernel panics
 - **Controller Issues** - Enable "Controller Compatibility Mode" in Bottle Config → Controller & Input
-- **[Game Configurations](https://github.com/frankea/Whisky/blob/main/WhiskyKit/Sources/WhiskyKit/GameDatabase/Resources/GameDB.json)** - 80+ curated per-game compatibility configs, also browsable in-app under Game Configurations
+- **[Game Configurations](https://github.com/jaxjixmix/Whisky/blob/HEAD/WhiskyKit/Sources/WhiskyKit/GameDatabase/Resources/GameDB.json)** - 80+ curated per-game compatibility configs, also browsable in-app under Game Configurations
 
 ### Upstream issue audit
 
@@ -190,7 +188,7 @@ The Coverage badge above is scoped to the **`whiskykit` flag** — line
 coverage of the framework that holds the bottle, Wine, GameDB, and
 PE-parser logic, measured by `swift test --enable-code-coverage` per
 [`.github/workflows/CI.yml`](.github/workflows/CI.yml). The blended
-project-wide number on the [Codecov dashboard](https://codecov.io/gh/frankea/Whisky)
+project-wide number on the [Codecov dashboard](https://codecov.io/gh/jaxjixmix/Whisky)
 reads much lower because it averages in the SwiftUI app target, which
 only receives best-effort UI-test coverage. Read the badge as
 "WhiskyKit unit-test coverage," not full-app coverage.

@@ -10,7 +10,7 @@ There are no referral links here that pay the project a cut.
 
 - **GitHub Sponsors** — if you'd like to support the maintainer's time (triaging issues, cutting
   signed/notarized releases, keeping the bundled Wine runtime current), you can sponsor
-  [@frankea](https://github.com/frankea). Shipping a notarized macOS app also carries a recurring cost
+  [@jaxjixmix](https://github.com/jaxjixmix). Shipping a notarized macOS app also carries a recurring cost
   (an Apple Developer Program membership is required to sign and notarize the DMG).
 
 Whisky also stands on the shoulders of upstream projects. Whisky receives nothing from supporting them —

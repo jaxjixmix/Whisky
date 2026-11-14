@@ -43,11 +43,13 @@ A keypair is needed to sign appcast entries. Sparkle's `generate_keys` tool ship
 ~/Library/Developer/Xcode/DerivedData/Whisky-*/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_keys
 ```
 
-Run it once. The private key is stored automatically in your login keychain. The public key is printed to stdout — it is already committed in `Whisky/Info.plist` under `SUPublicEDKey`. If you regenerate keys you will invalidate the existing public key in the bundled app and need to re-release.
+Run it once. The private key is stored automatically in your login keychain. The public key is printed to stdout and goes into `Whisky/Info.plist` under `SUPublicEDKey`.
+
+> **This fork has not generated its own key yet.** `SUPublicEDKey` still holds the upstream fork's public key, and the feed at `jaxjixmix.github.io/Whisky/appcast.xml` is empty, so no update is ever offered. Before publishing the first signed build here, run `generate_keys` and replace `SUPublicEDKey` with the printed value. Doing that now is free — no build of this fork has shipped, so no installed copy can be stranded.
 
 ## Credential continuity (backup & recovery)
 
-Three secrets gate the release pipeline. Losing the Sparkle key is **unrecoverable** for existing installs: `SUPublicEDKey` is baked into every shipped `Info.plist`, so a regenerated key permanently strands all installed copies off auto-update. Keep current, restore-tested backups of all three. (A fourth credential, the `BREW_TOKEN` repository secret used by the release step that publishes to [frankea/homebrew-whisky](https://github.com/frankea/homebrew-whisky), is regenerable and so needs no backup — the three-secrets focus here is on the non-regenerable ones.)
+Three secrets gate the release pipeline. Losing the Sparkle key is **unrecoverable** for existing installs: `SUPublicEDKey` is baked into every shipped `Info.plist`, so a regenerated key permanently strands all installed copies off auto-update. Keep current, restore-tested backups of all three. (A fourth credential, the `BREW_TOKEN` repository secret used by the release step that publishes to [jaxjixmix/homebrew-whisky](https://github.com/jaxjixmix/homebrew-whisky), is regenerable and so needs no backup — the three-secrets focus here is on the non-regenerable ones.)
 
 | Secret | Where it lives | If lost |
 | --- | --- | --- |
@@ -165,7 +167,7 @@ Edit `dist/pages/appcast.xml` and add a new `<item>` near the top of `<channel>`
     <sparkle:minimumSystemVersion>15.0</sparkle:minimumSystemVersion>
     <description><![CDATA[<p>Release notes...</p>]]></description>
     <enclosure
-        url="https://github.com/frankea/Whisky/releases/download/app-vX.Y.Z/Whisky-X.Y.Z.dmg"
+        url="https://github.com/jaxjixmix/Whisky/releases/download/app-vX.Y.Z/Whisky-X.Y.Z.dmg"
         sparkle:edSignature="..."
         length="..."
         type="application/octet-stream" />
@@ -182,7 +184,7 @@ git tag -a app-vX.Y.Z -m "Whisky X.Y.Z"
 git push origin app-vX.Y.Z
 
 gh release create app-vX.Y.Z \
-  --repo frankea/Whisky \
+  --repo jaxjixmix/Whisky \
   --title "Whisky X.Y.Z" \
   --notes "..." \
   build/release/Whisky-X.Y.Z.dmg
@@ -194,11 +196,11 @@ The push to `main` triggers `.github/workflows/Documentation.yml`, which redeplo
 
 Publishing the `app-vX.Y.Z` release fires `.github/workflows/UpdateHomebrewTap.yml`,
 which downloads the DMG, computes its sha256, and bumps the
-[frankea/homebrew-whisky](https://github.com/frankea/homebrew-whisky) cask so
-`brew install --cask frankea/whisky/whisky` tracks the new version. No manual edit needed.
+[jaxjixmix/homebrew-whisky](https://github.com/jaxjixmix/homebrew-whisky) cask so
+a published tap would make `brew install --cask jaxjixmix/whisky/whisky` track the new version. This fork has no tap yet, so the workflow's tap step stays inert until one exists.
 
 This requires a one-time repository secret **`BREW_TOKEN`** — a personal access token
-(classic `repo`, or fine-grained with **Contents: write**) for `frankea/homebrew-whisky`;
+(classic `repo`, or fine-grained with **Contents: write**) for `jaxjixmix/homebrew-whisky`;
 the default `GITHUB_TOKEN` cannot push to another repository. If the secret is missing the
 workflow fails loudly so the drift is visible. You can also re-sync any tag manually via the
 workflow's `workflow_dispatch` input.
@@ -247,10 +249,10 @@ their pinned versions, and where each comes from. When the runtime needs to chan
 
 ## URLs the app depends on
 
-- `https://frankea.github.io/Whisky/WhiskyWineVersion.plist` — Wine version metadata
-- `https://frankea.github.io/Whisky/appcast.xml` — Sparkle update feed
-- `https://github.com/frankea/Whisky/releases/download/vX.Y.Z/Libraries.tar.gz` — Wine binary archive
-- `https://github.com/frankea/Whisky/releases/download/app-vX.Y.Z/Whisky-X.Y.Z.dmg` — app DMG
+- `https://jaxjixmix.github.io/Whisky/WhiskyWineVersion.plist` — Wine version metadata
+- `https://jaxjixmix.github.io/Whisky/appcast.xml` — Sparkle update feed
+- `https://github.com/jaxjixmix/Whisky/releases/download/vX.Y.Z/Libraries.tar.gz` — Wine binary archive
+- `https://github.com/jaxjixmix/Whisky/releases/download/app-vX.Y.Z/Whisky-X.Y.Z.dmg` — app DMG
 
 ## Pitfalls
 
