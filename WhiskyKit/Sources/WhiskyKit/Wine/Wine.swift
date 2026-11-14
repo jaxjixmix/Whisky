@@ -162,7 +162,7 @@ public class Wine {
             case .message(let message), .error(let message):
                 return message
             }
-        }.joined()
+        }.joined(separator: "\n")
     }
 
     @discardableResult
@@ -189,7 +189,7 @@ public class Wine {
             }
         }
 
-        return result.joined()
+        return result.joined(separator: "\n")
     }
 
     public static func wineVersion() async throws -> String {

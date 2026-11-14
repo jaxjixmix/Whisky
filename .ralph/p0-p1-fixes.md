@@ -10,7 +10,7 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 ### P0
 - [x] P0-1 Durable bottle creation (register/persist before Wine; keep visible; surface error) — #760 #798 #819 #1029 #1079 #1110 #1191 #1231 #1232 #1237 #1306 #1311 #1364 — done: settings/path saved before Wine, failures keep bottle + alert; verified build + typecheck
 - [x] P0-2 Kill-on-quit (true default + synchronous wineserver -k wait) — #626 #680 #1134 — done: optional default true, `Wine.killBottleAndWait` waits 5s; verified build + typecheck
-- [ ] P0-3 Pipe EOF spin (buffered lines, disarm handler, join with \n) — #1010 #917
+- [x] P0-3 Pipe EOF spin (buffered lines, disarm handler, join with \n) — #1010 #917 — done: PipeLineBuffer, handler nil on EOF, termination drains, runWine joins with newlines; self-tests pass
 - [ ] P0-4 Log cap (50 MB + marker, serialized writes, unique filenames) — #1115 #1005 #1261
 - [ ] P0-5 Downloader + atomic runtime install (errors, no NaN, retry, staging/validate/swap) — #293 #801 #995 #1020 #1070 #1271 #1275
 - [ ] P0-6 Off-main program/Start-Menu scan; fix pin loop; stop deleting .lnk — #688 #661 #941
@@ -27,7 +27,7 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 
 ## Verification (run after every item)
 - `cd WhiskyKit && swift build`
-- `cd WhiskyKit && swift test` (once the test target exists)
+- `cd WhiskyKit && swift run -Xswiftc -enable-testing WhiskyKitSelfTest` (XCTest is unavailable in CLT)
 - `/tmp/typecheck-whisky.sh` (app Swift sources, Sparkle stub)
 - Commit each verified item separately.
 
