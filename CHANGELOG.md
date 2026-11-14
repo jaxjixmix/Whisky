@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- This fork now distributes under its own GitHub home
+  (`github.com/jaxjixmix/Whisky`). README, docs, issue templates, the
+  landing page and the app's GitHub/issue links point there; the Wine
+  runtime plist, runtime archive and Sparkle feed resolve from
+  `jaxjixmix.github.io/Whisky` and this repository's Releases. The app
+  update feed is empty until the first signed build is published here.
+  Telemetry is disabled (no project token) so opt-in events never reach
+  another fork's PostHog project.
 - Wine logs now keep the newest output when they reach the 20 MiB cap.
   The cap used to keep the first 20 MiB and discard the rest, so a crash at
   the end of a long error-spamming session never reached the log the crash

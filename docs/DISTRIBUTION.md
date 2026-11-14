@@ -6,6 +6,10 @@ mac"* today lands on the **archived original** (getwhisky.app, `whisky-app/whisk
 close that gap. Most require a real account or a third-party PR, so they're listed here as ready-to-run
 actions rather than automated.
 
+> **This fork's canonical home** is https://github.com/jaxjixmix/Whisky. References below to
+> getwhisky.app and `whisky-app/whisky` describe the archived original and its distribution, kept as
+> history for why the outreach steps below exist.
+
 ## 1. Homebrew (highest leverage)
 
 The default `brew install --cask whisky` installs the archived `IsaacMarovitz/Whisky` v2.3.5. The good
@@ -17,27 +21,27 @@ there's no pointer to this fork.
 **Action — open a PR against [homebrew/homebrew-cask](https://github.com/Homebrew/homebrew-cask)** to add
 a successor pointer. Realistic asks, easiest first:
 
-> The `whisky` cask is already deprecated (unmaintained, 2025-04-09). `frankea/Whisky` is an actively
+> The `whisky` cask is already deprecated (unmaintained, 2025-04-09). `jaxjixmix/Whisky` is an actively
 > maintained fork (signed + notarized DMGs, in-app Sparkle updates). Requesting one of:
-> (a) add a `caveats` note pointing users to `brew install --cask frankea/whisky/whisky`;
+> (a) add a `caveats` note pointing users to the fork's releases page;
 > (b) repoint the cask's `url`/`homepage` to the fork's releases; or
 > (c) `disable!` the cask with that pointer.
 
 The `caveats`-pointer ask (a) is the lowest-friction and most likely to be accepted; a full repoint (b)
 is more sensitive. Until then, keep the README's "Getting the right Whisky" warning prominent and the
-qualified tap (`frankea/whisky/whisky`) as the documented path.
+releases page as the documented path (no Homebrew tap is published for this fork yet).
 
 ## 2. Search & domain
 
 - The GitHub Pages landing page (`dist/pages/`) already has solid on-page SEO (title, description,
-  OpenGraph/Twitter cards, JSON-LD). The ceiling is **domain authority**: `frankea.github.io` is treated
+  OpenGraph/Twitter cards, JSON-LD). The ceiling is **domain authority**: `jaxjixmix.github.io` is treated
   as its own site by search engines (github.io is on the Public Suffix List), but a project subpath on a
   personal Pages domain still carries less weight for a niche query than a dedicated domain with backlinks.
-- **Action:** consider a custom domain (e.g. `whisky.frankea.dev` or a `.app`) with a `CNAME` in
+- **Action:** consider a custom domain with a `CNAME` in
   `dist/pages/` and the Pages custom-domain setting. Marginal alone (~5-10%), meaningful **only** paired
   with backlinks below.
 - **Action:** ask the archived `whisky-app` org (Isaac) whether the archived repo's README / getwhisky.app
-  can carry a one-line "no longer maintained — see frankea/Whisky" pointer. A single backlink from the
+  can carry a one-line "no longer maintained — see jaxjixmix/Whisky" pointer. A single backlink from the
   canonical domain is worth more than any on-page tweak.
 
 ## 3. Community presence (backlinks + word of mouth)
