@@ -19,8 +19,8 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 ### P1
 - [x] P1-9 ShellQuoting + launch/env quoting — #904 — done: single-quote helper, launch paths/env values quoted, AppleScript escaping for terminal commands; self-test + typecheck pass
 - [x] P1-10 Winetricks via temp bash script — #470 #1011 — done: temp executable script with quoted PATH/WINEPREFIX/verb, Terminal runs `bash <script>`, script self-deletes; verbs read as a local file; typecheck passes
-- [ ] P1-11 Remove startup volume probes (#906)
-- [ ] P1-12 Edit-menu/Cmd-A bottle toggle — #1060
+- [x] P1-11 Remove startup volume probes (#906) — done with P0-7: `Bottle.init` no longer touches pin volumes or files; only time a volume is probed is when creating a pin
+- [x] P1-12 Edit-menu/Cmd-A bottle toggle — #1060 — done: Wine query/apply/revert of `HKCU\Software\Wine\Mac Driver\EditMenu`, bottle Config toggle, localized label; typecheck passes
 - [ ] P1-13 Blocklist dedupe — #431
 - [ ] P1-14 Localization fallback audit — #853
 - [ ] P1-15 CrossOver HTML helper filter — #1215

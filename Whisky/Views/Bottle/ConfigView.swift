@@ -35,6 +35,8 @@ struct ConfigView: View {
     @State private var buildVersionLoadingState: LoadingState = .loading
     @State private var retinaModeLoadingState: LoadingState = .loading
     @State private var dpiConfigLoadingState: LoadingState = .loading
+    @State private var editMenuEnabled: Bool = true
+    @State private var editMenuLoadingState: LoadingState = .loading
     @State private var dpiSheetPresented: Bool = false
     @AppStorage("wineSectionExpanded") private var wineSectionExpanded: Bool = true
     @AppStorage("dxvkSectionExpanded") private var dxvkSectionExpanded: Bool = true
@@ -66,6 +68,21 @@ struct ConfigView: View {
                                 }
                             }
                         }
+                }
+                SettingItemView(title: "config.editMenu", loadingState: editMenuLoadingState) {
+                    Toggle("config.editMenu", isOn: $editMenuEnabled)
+                        .onChange(of: editMenuEnabled, { _, newValue in
+                            Task(priority: .userInitiated) {
+                                editMenuLoadingState = .modifying
+                                do {
+                                    try await Wine.changeEditMenu(bottle: bottle, enabled: newValue)
+                                    editMenuLoadingState = .success
+                                } catch {
+                                    print("Failed to change edit menu")
+                                    editMenuLoadingState = .failed
+                                }
+                            }
+                        })
                 }
                 SettingItemView(title: "config.retinaMode", loadingState: retinaModeLoadingState) {
                     Toggle("config.retinaMode", isOn: $retinaMode)
@@ -202,6 +219,15 @@ struct ConfigView: View {
                 } catch {
                     print(error)
                     retinaModeLoadingState = .failed
+                }
+            }
+            Task(priority: .userInitiated) {
+                do {
+                    editMenuEnabled = try await Wine.isEditMenuEnabled(bottle: bottle)
+                    editMenuLoadingState = .success
+                } catch {
+                    print(error)
+                    editMenuLoadingState = .failed
                 }
             }
             Task(priority: .userInitiated) {

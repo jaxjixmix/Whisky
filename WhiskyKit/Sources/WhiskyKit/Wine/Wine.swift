@@ -416,6 +416,35 @@ extension Wine {
         )
     }
 
+    /// Whether Wine's mac-driver Edit menu (Cmd-A/C/V mapped to Windows
+    /// select-all/copy/paste) is enabled. Wine enables it when the empty
+    /// `EditMenu` value is absent.
+    public static func isEditMenuEnabled(bottle: Bottle) async throws -> Bool {
+        let output = try await runWine(
+            ["reg", "query", RegistryKey.macDriver.rawValue, "-v", "EditMenu"],
+            bottle: bottle
+        )
+        let hasEmptyEditMenu = output
+            .split(whereSeparator: \.isNewline)
+            .contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("EditMenu") }
+        return !hasEmptyEditMenu
+    }
+
+    public static func changeEditMenu(bottle: Bottle, enabled: Bool) async throws {
+        if enabled {
+            // Wine's default is enabled; remove the suppressing empty value.
+            try await runWine(
+                ["reg", "delete", RegistryKey.macDriver.rawValue, "-v", "EditMenu", "-f"],
+                bottle: bottle
+            )
+        } else {
+            try await addRegistryKey(
+                bottle: bottle, key: RegistryKey.macDriver.rawValue,
+                name: "EditMenu", data: "", type: .string
+            )
+        }
+    }
+
     public static func dpiResolution(bottle: Bottle) async throws -> Int? {
         guard let output = try await Wine.queryRegistryKey(bottle: bottle, key: RegistryKey.desktop.rawValue,
                                                      name: "LogPixels", type: .dword

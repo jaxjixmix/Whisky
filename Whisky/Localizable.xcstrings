@@ -5046,6 +5046,16 @@
         }
       }
     },
+    "config.editMenu" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wine Edit menu (Cmd-A/C/V)"
+          }
+        }
+      }
+    },
     "config.enhacnedSync.esync" : {
       "localizations" : {
         "ar" : {
