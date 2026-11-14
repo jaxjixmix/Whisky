@@ -1,0 +1,67 @@
+name: App Release Build
+
+# Builds an unsigned (ad-hoc signed) Whisky.app zip for a fork release on a
+# machine without the Developer ID certificate. The signed, notarized DMG
+# remains the job of scripts/release.sh per docs/ReleaseWorkflow.md; this
+# workflow exists only because the release machine had no Xcode.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Whisky.app
+    runs-on: macos-26
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: latest-stable
+
+      - name: Build
+        run: |
+          xcodebuild -project Whisky.xcodeproj \
+            -scheme Whisky \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      # Every Mach-O needs at least an ad-hoc signature to run on Apple Silicon.
+      # Pre-signed nested code (Sparkle) is left alone so its entitlements survive.
+      - name: Ad-hoc sign
+        run: |
+          set -euo pipefail
+          app="build/Build/Products/Release/Whisky.app"
+          test -d "$app" || { echo "::error::app bundle missing"; exit 1; }
+
+          while IFS= read -r -d '' file; do
+            if file -b "$file" | grep -q 'Mach-O'; then
+              codesign --verify "$file" >/dev/null 2>&1 || codesign --force --sign - "$file"
+            fi
+          done < <(find "$app" -type f -print0)
+
+          appex=$(find "$app" -name '*.appex' -print -quit)
+          if [ -n "$appex" ]; then
+            codesign --force --sign - \
+              --entitlements WhiskyThumbnail/WhiskyThumbnail.entitlements "$appex"
+          fi
+
+          codesign --force --sign - --entitlements Whisky/Whisky.entitlements "$app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+
+      - name: Zip
+        run: ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Release/Whisky.app Whisky.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Whisky-unsigned
+          path: Whisky.zip
