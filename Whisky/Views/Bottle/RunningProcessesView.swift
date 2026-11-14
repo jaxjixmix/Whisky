@@ -76,6 +76,7 @@ struct RunningProcessesView: View {
         }
     }
 
+    @MainActor
     func fetchProcesses() async {
         var newProcessList = [BottleProcess]()
         let output: String?
@@ -99,6 +100,7 @@ struct RunningProcessesView: View {
         processes = newProcessList
     }
 
+    @MainActor
     func killProcess() async {
         if let thisProcess = processes.first(where: { $0.id == selectedProcess }) {
             do {

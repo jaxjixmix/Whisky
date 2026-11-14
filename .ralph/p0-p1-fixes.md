@@ -15,7 +15,7 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 - [x] P0-5 Downloader + atomic runtime install (errors, no NaN, retry, staging/validate/swap) — #293 #801 #995 #1020 #1070 #1271 #1275 — done: error/retry UI, guarded progress, stable temp file, staging + validate + swap; self-tests pass
 - [x] P0-6 Off-main program/Start-Menu scan; fix pin loop; stop deleting .lnk — #688 #661 #941 — done: detached scan with a pins snapshot, async callers, `.lnk` kept and tracked in `importedShortcuts`, `continue` + duplicate guard; verified typecheck
 - [x] P0-7 Settings/registry data loss (inverted guard, keep pins, quarantine/backup) — #359 #830 — done: missing file creates defaults, corrupt settings quarantined, pins kept (dedupe only), corrupt registry backed up, version mismatch preserves paths; self-tests pass
-- [ ] P0-8 Main-actor isolation for observed UI state — #1131 #1159 #1151
+- [x] P0-8 Main-actor isolation for observed UI state — #1131 #1159 #1151 — done: Rosetta install state, process list fetch/kill, bottle creation settings and program scans all mutate on the main actor; verified typecheck
 ### P1
 - [ ] P1-9 ShellQuoting + launch/env quoting — #904
 - [ ] P1-10 Winetricks via temp bash script — #470 #1011
