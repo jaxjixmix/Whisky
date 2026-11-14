@@ -13,7 +13,7 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 - [x] P0-3 Pipe EOF spin (buffered lines, disarm handler, join with \n) — #1010 #917 — done: PipeLineBuffer, handler nil on EOF, termination drains, runWine joins with newlines; self-tests pass
 - [x] P0-4 Log cap (50 MB + marker, serialized writes, unique filenames) — #1115 #1005 #1261 — done: 50 MB cap with marker, shared write lock, UUID log suffix; self-test passes
 - [x] P0-5 Downloader + atomic runtime install (errors, no NaN, retry, staging/validate/swap) — #293 #801 #995 #1020 #1070 #1271 #1275 — done: error/retry UI, guarded progress, stable temp file, staging + validate + swap; self-tests pass
-- [ ] P0-6 Off-main program/Start-Menu scan; fix pin loop; stop deleting .lnk — #688 #661 #941
+- [x] P0-6 Off-main program/Start-Menu scan; fix pin loop; stop deleting .lnk — #688 #661 #941 — done: detached scan with a pins snapshot, async callers, `.lnk` kept and tracked in `importedShortcuts`, `continue` + duplicate guard; verified typecheck
 - [ ] P0-7 Settings/registry data loss (inverted guard, keep pins, quarantine/backup) — #359 #830
 - [ ] P0-8 Main-actor isolation for observed UI state — #1131 #1159 #1151
 ### P1

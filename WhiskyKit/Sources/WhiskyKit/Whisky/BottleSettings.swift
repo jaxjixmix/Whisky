@@ -20,7 +20,7 @@ import Foundation
 import SemanticVersion
 import os.log
 
-public struct PinnedProgram: Codable, Hashable, Equatable {
+public struct PinnedProgram: Codable, Hashable, Equatable, Sendable {
     public var name: String
     public var url: URL?
     public var removable: Bool
@@ -48,6 +48,9 @@ public struct BottleInfo: Codable, Equatable {
     var name: String = "Bottle"
     var pins: [PinnedProgram] = []
     var blocklist: [URL] = []
+    /// Start-Menu shortcuts already imported, so a shortcut that stays in the
+    /// bottle is not imported (and pinned) again after the user unpins it.
+    var importedShortcuts: [URL] = []
 
     public init() {}
 
@@ -56,6 +59,7 @@ public struct BottleInfo: Codable, Equatable {
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Bottle"
         self.pins = try container.decodeIfPresent([PinnedProgram].self, forKey: .pins) ?? []
         self.blocklist = try container.decodeIfPresent([URL].self, forKey: .blocklist) ?? []
+        self.importedShortcuts = try container.decodeIfPresent([URL].self, forKey: .importedShortcuts) ?? []
     }
 }
 
@@ -203,6 +207,12 @@ public struct BottleSettings: Codable, Equatable {
     public var blocklist: [URL] {
         get { return info.blocklist }
         set { info.blocklist = newValue }
+    }
+
+    /// Start-Menu shortcuts already imported into pins.
+    public var importedShortcuts: [URL] {
+        get { return info.importedShortcuts }
+        set { info.importedShortcuts = newValue }
     }
 
     public var enhancedSync: EnhancedSync {

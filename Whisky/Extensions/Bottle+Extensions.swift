@@ -94,51 +94,70 @@ extension Bottle {
 
         linkURLs.sort(by: { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() })
 
-        for link in linkURLs {
+        let alreadyImported = Set(settings.importedShortcuts)
+        var newlyImported: [URL] = []
+
+        for link in linkURLs where !alreadyImported.contains(link) {
             do {
                 if let program = ShellLinkHeader.getProgram(url: link,
                                                             handle: try FileHandle(forReadingFrom: link),
                                                             bottle: self) {
                     if !startMenuPrograms.contains(where: { $0.url == program.url }) {
                         startMenuPrograms.append(program)
-                        try FileManager.default.removeItem(at: link)
                     }
+                    // Keep the .lnk: it belongs to the bottle, and importing
+                    // it again after an unpin would silently re-pin it.
+                    newlyImported.append(link)
                 }
             } catch {
                 print(error)
             }
         }
 
+        if !newlyImported.isEmpty {
+            settings.importedShortcuts.append(contentsOf: newlyImported)
+        }
+
         return startMenuPrograms
     }
 
-    func updateInstalledPrograms() {
+    @MainActor
+    func updateInstalledPrograms() async {
         let driveC = url.appending(path: "drive_c")
-        var programs: [Program] = []
-        var foundURLS: Set<URL> = []
+        let blocklist = settings.blocklist
+        let pins = settings.pins
+        let bottle = self
 
-        for folderName in ["Program Files", "Program Files (x86)"] {
-            let folderURL = driveC.appending(path: folderName)
-            let enumerator = FileManager.default.enumerator(
-                at: folderURL, includingPropertiesForKeys: [.isExecutableKey], options: [.skipsHiddenFiles]
-            )
+        let programs = await Task.detached(priority: .userInitiated) { () -> [Program] in
+            var programs: [Program] = []
+            var foundURLS: Set<URL> = []
 
-            while let url = enumerator?.nextObject() as? URL {
-                guard !url.hasDirectoryPath && url.pathExtension == "exe" else { continue }
-                guard !settings.blocklist.contains(url) else { continue }
-                foundURLS.insert(url)
-                programs.append(Program(url: url, bottle: self))
+            for folderName in ["Program Files", "Program Files (x86)"] {
+                let folderURL = driveC.appending(path: folderName)
+                let enumerator = FileManager.default.enumerator(
+                    at: folderURL, includingPropertiesForKeys: [.isExecutableKey], options: [.skipsHiddenFiles]
+                )
+
+                while let url = enumerator?.nextObject() as? URL {
+                    guard !url.hasDirectoryPath && url.pathExtension == "exe" else { continue }
+                    guard !blocklist.contains(url) else { continue }
+                    foundURLS.insert(url)
+                    programs.append(Program(url: url, bottle: bottle,
+                                            pinned: pins.contains(where: { $0.url == url })))
+                }
             }
-        }
 
-        // Add missing programs from pins
-        for pin in settings.pins {
-            guard let url = pin.url else { continue }
-            guard !foundURLS.contains(url) else { continue }
-            programs.append(Program(url: url, bottle: self))
-        }
+            // Add missing programs from pins
+            for pin in pins {
+                guard let url = pin.url else { continue }
+                guard !foundURLS.contains(url) else { continue }
+                programs.append(Program(url: url, bottle: bottle, pinned: true))
+            }
 
-        self.programs = programs.sorted { $0.name.lowercased() < $1.name.lowercased() }
+            return programs.sorted { $0.name.lowercased() < $1.name.lowercased() }
+        }.value
+
+        self.programs = programs
     }
 
     @MainActor
@@ -158,6 +177,12 @@ extension Bottle {
                     let blockedUrl = bottle.settings.blocklist[index]
                     bottle.settings.blocklist[index] = blockedUrl.updateParentBottle(old: url,
                                                                                      new: destination)
+                }
+
+                for index in 0..<bottle.settings.importedShortcuts.count {
+                    let shortcut = bottle.settings.importedShortcuts[index]
+                    bottle.settings.importedShortcuts[index] = shortcut.updateParentBottle(old: url,
+                                                                                          new: destination)
                 }
             }
             try FileManager.default.moveItem(at: url, to: destination)
