@@ -8,8 +8,8 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 
 ## Checklist
 ### P0
-- [ ] P0-1 Durable bottle creation (register/persist before Wine; keep visible; surface error) — #760 #798 #819 #1029 #1079 #1110 #1191 #1231 #1232 #1237 #1306 #1311 #1364
-- [ ] P0-2 Kill-on-quit (true default + synchronous wineserver -k wait) — #626 #680 #1134
+- [x] P0-1 Durable bottle creation (register/persist before Wine; keep visible; surface error) — #760 #798 #819 #1029 #1079 #1110 #1191 #1231 #1232 #1237 #1306 #1311 #1364 — done: settings/path saved before Wine, failures keep bottle + alert; verified build + typecheck
+- [x] P0-2 Kill-on-quit (true default + synchronous wineserver -k wait) — #626 #680 #1134 — done: optional default true, `Wine.killBottleAndWait` waits 5s; verified build + typecheck
 - [ ] P0-3 Pipe EOF spin (buffered lines, disarm handler, join with \n) — #1010 #917
 - [ ] P0-4 Log cap (50 MB + marker, serialized writes, unique filenames) — #1115 #1005 #1261
 - [ ] P0-5 Downloader + atomic runtime install (errors, no NaN, retry, staging/validate/swap) — #293 #801 #995 #1020 #1070 #1271 #1275

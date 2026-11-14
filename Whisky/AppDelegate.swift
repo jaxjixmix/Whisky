@@ -18,6 +18,7 @@
 
 import Foundation
 import SwiftUI
+import WhiskyKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     @AppStorage("hasShownMoveToApplicationsAlert") private var hasShownMoveToApplicationsAlert = false
@@ -43,8 +44,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        if UserDefaults.standard.bool(forKey: "killOnTerminate") {
-            WhiskyApp.killBottles()
+        // The Settings toggle is an `@AppStorage` that defaults to on without
+        // writing the key. `bool(forKey:)` reports an absent key as off.
+        let killOnTerminate = UserDefaults.standard.object(forKey: "killOnTerminate") as? Bool ?? true
+        guard killOnTerminate else { return }
+
+        // Quit waits for each wineserver to acknowledge the kill; a detached
+        // task would be cancelled when the process exits.
+        for bottle in BottleVM.shared.bottles {
+            Wine.killBottleAndWait(bottle: bottle)
         }
     }
 

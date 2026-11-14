@@ -214,6 +214,44 @@ public class Wine {
         }
     }
 
+    /// Run `wineserver -k` and wait for it, so quitting the app cannot return
+    /// before the bottle's processes have been asked to close.
+    ///
+    /// - Returns: `true` when `wineserver` exited successfully within `timeout`.
+    @discardableResult
+    public static func killBottleAndWait(bottle: Bottle, timeout: TimeInterval = 5) -> Bool {
+        let process = Process()
+        process.executableURL = wineserverBinary
+        process.arguments = ["-k"]
+        process.currentDirectoryURL = wineserverBinary.deletingLastPathComponent()
+        process.environment = constructWineServerEnvironment(for: bottle)
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            Logger.wineKit.error(
+                "Failed to start wineserver for '\(bottle.settings.name, privacy: .public)': \(error, privacy: .public)"
+            )
+            return false
+        }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+
+        if process.isRunning {
+            Logger.wineKit.warning(
+                "wineserver -k timed out for '\(bottle.settings.name, privacy: .public)'"
+            )
+            process.terminate()
+            return false
+        }
+        return process.terminationStatus == 0
+    }
+
     public static func enableDXVK(bottle: Bottle) throws {
         try FileManager.default.replaceDLLs(
             in: bottle.url.appending(path: "drive_c").appending(path: "windows").appending(path: "system32"),
