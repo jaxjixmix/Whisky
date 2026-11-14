@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Wine logs now keep the newest output when they reach the 20 MiB cap.
+  The cap used to keep the first 20 MiB and discard the rest, so a crash at
+  the end of a long error-spamming session never reached the log the crash
+  classifier reads. The log now restarts with a truncation marker and
+  continues, still bounded by the cap (#3, from frankea upstream issue
+  frankea/Whisky#360; upstream whisky-app/whisky #1261 and #1115).
 - The "when switching away with running processes" setting now takes
   effect. Its default is Ask, so switching bottles while a program Whisky
   launched is still running now asks whether to keep it running (#352).
