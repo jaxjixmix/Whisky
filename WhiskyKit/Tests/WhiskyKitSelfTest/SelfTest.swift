@@ -26,6 +26,8 @@ struct SelfTest {
         )
         check(eofCount == 1, "closed pipe stops producing messages: \(eofCount)")
 
+        check(cappedLogStaysBounded(), "log is capped and leaves a truncation marker")
+
         if failures > 0 {
             print("\(failures) self-test(s) failed")
             exit(1)
@@ -48,6 +50,32 @@ struct SelfTest {
             }
         }
         return messages
+    }
+
+    static func cappedLogStaysBounded() -> Bool {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "whisky-log-\(UUID().uuidString).log")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            try Data().write(to: url)
+            let handle = try FileHandle(forWritingTo: url)
+            let line = String(repeating: "a", count: 100_000) + "\n"
+            let writes = Int(FileHandle.maxLogSize / 100_000) + 2
+            for _ in 0..<writes {
+                handle.write(line: line)
+            }
+            try handle.close()
+
+            let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            let contents = try String(contentsOf: url, encoding: .utf8)
+            return size <= Int(FileHandle.maxLogSize) + line.utf8.count
+                && contents.contains("log truncated")
+                && contents.hasSuffix(line)
+        } catch {
+            print("log cap test error: \(error)")
+            return false
+        }
     }
 
     static func messageCountBeforeExit(arguments: [String], waitNanoseconds: UInt64) async -> Int {

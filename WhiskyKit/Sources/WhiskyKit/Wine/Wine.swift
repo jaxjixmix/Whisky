@@ -315,7 +315,10 @@ extension Wine {
         }
 
         let dateString = Date.now.ISO8601Format()
-        let fileURL = Self.logsFolder.appending(path: dateString).appendingPathExtension("log")
+        // Two runs in the same second used to overwrite each other's log.
+        let fileURL = Self.logsFolder
+            .appending(path: "\(dateString)-\(UUID().uuidString.prefix(8))")
+            .appendingPathExtension("log")
         try "".write(to: fileURL, atomically: true, encoding: .utf8)
         return try FileHandle(forWritingTo: fileURL)
     }
