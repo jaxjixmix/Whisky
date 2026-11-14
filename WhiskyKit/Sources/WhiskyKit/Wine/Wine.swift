@@ -114,10 +114,27 @@ public class Wine {
     public static func generateRunCommand(
         at url: URL, bottle: Bottle, args: String, environment: [String: String]
     ) -> String {
-        var wineCmd = "\(wineBinary.esc) start /unix \(url.esc) \(args)"
+        let words = [
+            wineBinary.path(percentEncoded: false),
+            "start",
+            "/unix",
+            url.path(percentEncoded: false)
+        ]
+        var wineCmd = ShellQuoting.commandLine(words)
+
+        // `args` is user-authored command-line text (it may contain several
+        // arguments and quotes); keep it verbatim.
+        if !args.isEmpty {
+            wineCmd += " " + args
+        }
+
         let env = constructWineEnvironment(for: bottle, environment: environment)
-        for environment in env {
-            wineCmd = "\(environment.key)=\"\(environment.value)\" " + wineCmd
+        for (key, value) in env {
+            guard ShellQuoting.isValidEnvironmentKey(key) else {
+                Logger.wineKit.warning("Skipping invalid environment key '\(key, privacy: .public)'")
+                continue
+            }
+            wineCmd = "\(ShellQuoting.assignment(key, value)) " + wineCmd
         }
 
         return wineCmd
@@ -125,7 +142,7 @@ public class Wine {
 
     public static func generateTerminalEnvironmentCommand(bottle: Bottle) -> String {
         var cmd = """
-        export PATH=\"\(WhiskyWineInstaller.binFolder.path):$PATH\"
+        export PATH=\(ShellQuoting.quoted(WhiskyWineInstaller.binFolder.path)):\"$PATH\"
         export WINE=\"wine64\"
         alias wine=\"wine64\"
         alias winecfg=\"wine64 winecfg\"
@@ -140,8 +157,8 @@ public class Wine {
         """
 
         let env = constructWineEnvironment(for: bottle, environment: constructWineEnvironment(for: bottle))
-        for environment in env {
-            cmd += "\nexport \(environment.key)=\"\(environment.value)\""
+        for (key, value) in env where ShellQuoting.isValidEnvironmentKey(key) {
+            cmd += "\nexport \(ShellQuoting.assignment(key, value))"
         }
 
         return cmd

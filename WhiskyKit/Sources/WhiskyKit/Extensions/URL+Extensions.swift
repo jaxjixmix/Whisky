@@ -19,6 +19,12 @@
 import Foundation
 
 extension String {
+    /// Escape text for an AppleScript double-quoted string literal.
+    public var appleScriptQuoted: String {
+        replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     public var esc: String {
         let esc = ["\\", "\"", "'", " ", "(", ")", "[", "]", "{", "}", "&", "|",
                    ";", "<", ">", "`", "$", "!", "*", "?", "#", "~", "="]

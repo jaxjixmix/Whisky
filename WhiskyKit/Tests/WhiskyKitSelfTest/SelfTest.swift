@@ -39,6 +39,8 @@ struct SelfTest {
         check(registryBacksUpCorruptFile(), "a corrupt registry is backed up, not silently dropped")
         check(registryPreservesPathsOnVersionMismatch(), "a registry version change keeps bottle paths")
 
+        check(shellQuotingHandlesMetacharacters(), "shell quoting handles spaces, quotes and substitutions")
+
         if failures > 0 {
             print("\(failures) self-test(s) failed")
             exit(1)
@@ -61,6 +63,18 @@ struct SelfTest {
             }
         }
         return messages
+    }
+
+    static func shellQuotingHandlesMetacharacters() -> Bool {
+        let input = "a b'c$d`e\"f\\g"
+        let expected = "'a b'\\''c$d`e\"f\\g'"
+        return ShellQuoting.quoted(input) == expected
+            && ShellQuoting.quoted("") == "''"
+            && ShellQuoting.commandLine(["a", "b c"]) == "'a' 'b c'"
+            && ShellQuoting.assignment("KEY", "a b") == "KEY='a b'"
+            && ShellQuoting.isValidEnvironmentKey("WINEDEBUG")
+            && !ShellQuoting.isValidEnvironmentKey("A-B")
+            && !ShellQuoting.isValidEnvironmentKey("1A")
     }
 
     static func settingsDecodeCreatesDefaultsForMissingFile() -> Bool {

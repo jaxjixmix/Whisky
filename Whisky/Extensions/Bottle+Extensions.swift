@@ -30,12 +30,12 @@ extension Bottle {
         let whiskyCmdURL = Bundle.main.url(forResource: "WhiskyCmd", withExtension: nil)
         if let whiskyCmdURL = whiskyCmdURL {
             let whiskyCmd = whiskyCmdURL.path(percentEncoded: false)
-            let cmd = "eval \\\"$(\\\"\(whiskyCmd)\\\" shellenv \\\"\(settings.name)\\\")\\\""
+            let cmd = "eval \"$(\"\(ShellQuoting.quoted(whiskyCmd))\" shellenv \"\(ShellQuoting.quoted(settings.name))\")\""
 
             let script = """
             tell application "Terminal"
             activate
-            do script "\(cmd)"
+            do script "\(cmd.appleScriptQuoted)"
             end tell
             """
 
