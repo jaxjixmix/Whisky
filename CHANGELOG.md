@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.9.3] - 2026-11-15 (App)
+
 ### Changed
 - This fork now distributes under its own GitHub home
   (`github.com/jaxjixmix/Whisky`). README, docs, issue templates, the
