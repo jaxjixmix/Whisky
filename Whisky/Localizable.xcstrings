@@ -2313,6 +2313,16 @@
         }
       }
     },
+    "button.retry" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry"
+          }
+        }
+      }
+    },
     "button.run" : {
       "localizations" : {
         "ar" : {
@@ -17288,6 +17298,16 @@
         }
       }
     },
+    "setup.whiskywine.download.failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download failed. Check your connection and try again."
+          }
+        }
+      }
+    },
     "setup.whiskywine.download.subtitle" : {
       "localizations" : {
         "ar" : {
@@ -17828,6 +17848,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "快完成了。請不要退出。"
+          }
+        }
+      }
+    },
+    "setup.whiskywine.progress.unknown" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ downloaded"
           }
         }
       }

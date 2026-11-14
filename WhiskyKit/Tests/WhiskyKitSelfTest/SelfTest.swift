@@ -28,6 +28,9 @@ struct SelfTest {
 
         check(cappedLogStaysBounded(), "log is capped and leaves a truncation marker")
 
+        check(installPreservesRuntimeOnBadArchive(), "a bad runtime archive keeps the installed runtime")
+        check(installSwapsInValidRuntime(), "a valid runtime archive replaces the installed runtime")
+
         if failures > 0 {
             print("\(failures) self-test(s) failed")
             exit(1)
@@ -50,6 +53,94 @@ struct SelfTest {
             }
         }
         return messages
+    }
+
+    static func installPreservesRuntimeOnBadArchive() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-install-bad-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            let destination = root.appending(path: "Support")
+            let live = destination.appending(path: "Libraries")
+            let wine64 = live.appending(path: "Wine/bin/wine64")
+            try fileManager.createDirectory(at: wine64.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+            try Data("old".utf8).write(to: wine64)
+            try writeVersion(at: live)
+
+            let badArchive = root.appending(path: "bad.tar.gz")
+            try Data("not a tar".utf8).write(to: badArchive)
+
+            do {
+                try WhiskyWineInstaller.install(tarball: badArchive, into: destination)
+                return false
+            } catch {
+                let contents = try String(contentsOf: wine64, encoding: .utf8)
+                return contents == "old"
+            }
+        } catch {
+            print("install failure test error: \(error)")
+            return false
+        }
+    }
+
+    static func installSwapsInValidRuntime() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-install-good-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            let destination = root.appending(path: "Support")
+            let live = destination.appending(path: "Libraries")
+            let liveWine64 = live.appending(path: "Wine/bin/wine64")
+            try fileManager.createDirectory(at: liveWine64.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+            try Data("old".utf8).write(to: liveWine64)
+            try writeVersion(at: live)
+
+            let stage = root.appending(path: "stage")
+            let stagedLibraries = stage.appending(path: "Libraries")
+            let stagedWine64 = stagedLibraries.appending(path: "Wine/bin/wine64")
+            try fileManager.createDirectory(at: stagedWine64.deletingLastPathComponent(),
+                                            withIntermediateDirectories: true)
+            try Data("new".utf8).write(to: stagedWine64)
+            try writeVersion(at: stagedLibraries)
+
+            let archive = root.appending(path: "Libraries.tar.gz")
+            guard makeTar(folder: stage, archive: archive) else { return false }
+
+            try WhiskyWineInstaller.install(tarball: archive, into: destination)
+            let contents = try String(contentsOf: liveWine64, encoding: .utf8)
+            return contents == "new" && !fileManager.fileExists(atPath: archive.path)
+        } catch {
+            print("install success test error: \(error)")
+            return false
+        }
+    }
+
+    static func writeVersion(at libraries: URL) throws {
+        try FileManager.default.createDirectory(at: libraries, withIntermediateDirectories: true)
+        let url = libraries.appending(path: "WhiskyWineVersion").appendingPathExtension("plist")
+        let data = try PropertyListEncoder().encode(WhiskyWineVersion())
+        try data.write(to: url)
+    }
+
+    static func makeTar(folder: URL, archive: URL) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        process.arguments = ["-C", folder.path(percentEncoded: false), "-zcf",
+                             archive.path(percentEncoded: false), "."]
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            print("tar error: \(error)")
+            return false
+        }
     }
 
     static func cappedLogStaysBounded() -> Bool {
