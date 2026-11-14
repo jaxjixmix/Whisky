@@ -6,7 +6,8 @@ name: Update Homebrew Tap
 #
 # Requires a repository secret BREW_TOKEN: a personal access token (classic `repo`,
 # or fine-grained with Contents: write) for jaxjixmix/homebrew-whisky. The default
-# GITHUB_TOKEN cannot push to a different repository.
+# GITHUB_TOKEN cannot push to a different repository. Until the secret and the tap
+# exist the sync is skipped with a warning (docs/ReleaseWorkflow.md).
 
 on:
   release:
@@ -34,8 +35,10 @@ jobs:
           set -euo pipefail
 
           if [ -z "${BREW_TOKEN:-}" ]; then
-            echo "::error::BREW_TOKEN secret is not set. Add a PAT with Contents:write for jaxjixmix/homebrew-whisky."
-            exit 1
+            # No token yet means no tap either: stay inert (see docs/ReleaseWorkflow.md)
+            # instead of failing the release, but make the skipped sync visible.
+            echo "::warning::BREW_TOKEN secret is not set; skipping tap sync."
+            exit 0
           fi
 
           version="${TAG#app-v}"
