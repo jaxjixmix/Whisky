@@ -1,4 +1,5 @@
 import Foundation
+import SemanticVersion
 @testable import WhiskyKit
 
 @main
@@ -31,6 +32,13 @@ struct SelfTest {
         check(installPreservesRuntimeOnBadArchive(), "a bad runtime archive keeps the installed runtime")
         check(installSwapsInValidRuntime(), "a valid runtime archive replaces the installed runtime")
 
+        check(settingsDecodeCreatesDefaultsForMissingFile(), "missing bottle settings get defaults")
+        check(settingsKeepPinsAcrossWineVersionChange(), "a wine-version change keeps name and pins")
+        check(settingsQuarantineCorruptFile(), "an unreadable settings file is quarantined")
+        check(bottleKeepsPinsForMissingPrograms(), "missing pinned programs are kept")
+        check(registryBacksUpCorruptFile(), "a corrupt registry is backed up, not silently dropped")
+        check(registryPreservesPathsOnVersionMismatch(), "a registry version change keeps bottle paths")
+
         if failures > 0 {
             print("\(failures) self-test(s) failed")
             exit(1)
@@ -53,6 +61,140 @@ struct SelfTest {
             }
         }
         return messages
+    }
+
+    static func settingsDecodeCreatesDefaultsForMissingFile() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-settings-missing-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            let url = root.appending(path: "Metadata").appendingPathExtension("plist")
+            let settings = try BottleSettings.decode(from: url)
+            return settings.name == "Bottle" && fileManager.fileExists(atPath: url.path)
+        } catch {
+            print("settings missing-file test error: \(error)")
+            return false
+        }
+    }
+
+    static func settingsKeepPinsAcrossWineVersionChange() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-settings-version-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            let url = root.appending(path: "Metadata").appendingPathExtension("plist")
+            var settings = BottleSettings()
+            settings.name = "Keep me"
+            settings.wineVersion = SemanticVersion(0, 0, 0)
+            settings.pins = [PinnedProgram(name: "Pinned", url: URL(filePath: "/tmp/missing.exe"))]
+            try settings.encode(to: url)
+
+            let decoded = try BottleSettings.decode(from: url)
+            return decoded.name == "Keep me" && decoded.pins.count == 1
+        } catch {
+            print("settings version test error: \(error)")
+            return false
+        }
+    }
+
+    static func settingsQuarantineCorruptFile() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-settings-corrupt-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            let url = root.appending(path: "Metadata").appendingPathExtension("plist")
+            try Data("not a plist".utf8).write(to: url)
+
+            let decoded = try BottleSettings.decode(from: url)
+            let backups = try fileManager.contentsOfDirectory(atPath: root.path)
+                .filter { $0.contains(".corrupt-") }
+            return decoded.name == "Bottle" && backups.count == 1
+        } catch {
+            print("settings quarantine test error: \(error)")
+            return false
+        }
+    }
+
+    static func bottleKeepsPinsForMissingPrograms() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-pins-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            var settings = BottleSettings()
+            settings.pins = [PinnedProgram(name: "Missing",
+                                           url: root.appending(path: "drive_c/missing.exe"))]
+            try settings.encode(to: root.appending(path: "Metadata").appendingPathExtension("plist"))
+
+            let bottle = Bottle(bottleUrl: root)
+            return bottle.settings.pins.count == 1
+        } catch {
+            print("pin retention test error: \(error)")
+            return false
+        }
+    }
+
+    static func registryBacksUpCorruptFile() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-registry-corrupt-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            let file = root.appending(path: "BottleVM").appendingPathExtension("plist")
+            try Data("not a plist".utf8).write(to: file)
+
+            let data = BottleData(entriesFile: file)
+            let backups = try fileManager.contentsOfDirectory(atPath: root.path)
+                .filter { $0.contains(".corrupt-") }
+            let reloaded = BottleData(entriesFile: file)
+            return data.paths.isEmpty && backups.count == 1 && reloaded.paths.isEmpty
+        } catch {
+            print("registry corrupt test error: \(error)")
+            return false
+        }
+    }
+
+    static func registryPreservesPathsOnVersionMismatch() -> Bool {
+        let fileManager = FileManager.default
+        let root = fileManager.temporaryDirectory
+            .appending(path: "whisky-registry-version-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: root) }
+
+        do {
+            try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+            let file = root.appending(path: "BottleVM").appendingPathExtension("plist")
+            let bottleURL = URL(filePath: "/tmp/whisky-bottle")
+
+            var data = BottleData(entriesFile: file)
+            data.paths = [bottleURL]
+
+            var plist = try PropertyListSerialization.propertyList(
+                from: Data(contentsOf: file), options: [], format: nil
+            ) as? [String: Any]
+            plist?["fileVersion"] = ["major": 0, "minor": 9, "patch": 0, "preRelease": "", "build": ""]
+            let oldData = try PropertyListSerialization.data(
+                fromPropertyList: plist as Any, format: .xml, options: 0
+            )
+            try oldData.write(to: file)
+
+            let reloaded = BottleData(entriesFile: file)
+            return reloaded.paths == [bottleURL]
+        } catch {
+            print("registry version test error: \(error)")
+            return false
+        }
     }
 
     static func installPreservesRuntimeOnBadArchive() -> Bool {

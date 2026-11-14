@@ -253,18 +253,34 @@ public struct BottleSettings: Codable, Equatable {
     @discardableResult
     public static func decode(from metadataURL: URL) throws -> BottleSettings {
         guard FileManager.default.fileExists(atPath: metadataURL.path(percentEncoded: false)) else {
-            let decoder = PropertyListDecoder()
-            let settings = try decoder.decode(BottleSettings.self, from: Data(contentsOf: metadataURL))
+            let settings = BottleSettings()
+            try FileManager.default.createDirectory(
+                at: metadataURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try settings.encode(to: metadataURL)
             return settings
         }
 
-        let decoder = PropertyListDecoder()
         let data = try Data(contentsOf: metadataURL)
-        var settings = try decoder.decode(BottleSettings.self, from: data)
+        var settings: BottleSettings
+        do {
+            settings = try PropertyListDecoder().decode(BottleSettings.self, from: data)
+        } catch {
+            // Keep the unreadable file for recovery instead of overwriting it
+            // with defaults on the next save.
+            Logger.wineKit.error(
+                "Failed to decode bottle settings at \(metadataURL.path(percentEncoded: false), privacy: .public): \(error, privacy: .public)"
+            )
+            quarantine(metadataURL)
+            settings = BottleSettings()
+            try settings.encode(to: metadataURL)
+            return settings
+        }
 
         guard settings.fileVersion == BottleSettings.defaultFileVersion else {
             Logger.wineKit.warning("Invalid file version `\(settings.fileVersion)`")
+            quarantine(metadataURL)
             settings = BottleSettings()
             try settings.encode(to: metadataURL)
             return settings
@@ -278,6 +294,24 @@ public struct BottleSettings: Codable, Equatable {
         }
 
         return settings
+    }
+
+    /// Move an unreadable settings file aside so a later save cannot destroy it.
+    private static func quarantine(_ metadataURL: URL) {
+        let backup = metadataURL
+            .deletingLastPathComponent()
+            .appending(path: "\(metadataURL.deletingPathExtension().lastPathComponent).corrupt-\(Int(Date.now.timeIntervalSince1970))")
+            .appendingPathExtension("plist")
+        do {
+            try FileManager.default.moveItem(at: metadataURL, to: backup)
+            Logger.wineKit.warning(
+                "Quarantined bottle settings at \(backup.path(percentEncoded: false), privacy: .public)"
+            )
+        } catch {
+            Logger.wineKit.error(
+                "Failed to quarantine bottle settings: \(error, privacy: .public)"
+            )
+        }
     }
 
     func encode(to metadataUrl: URL) throws {
