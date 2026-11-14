@@ -19,6 +19,7 @@
 import Foundation
 import AppKit
 import WhiskyKit
+import os.log
 
 enum WinetricksCategories: String {
     case apps
@@ -45,16 +46,30 @@ class Winetricks {
     static let winetricksURL: URL = WhiskyWineInstaller.libraryFolder
         .appending(path: "winetricks")
 
+    @MainActor
     static func runCommand(command: String, bottle: Bottle) async {
         guard let resourcesURL = Bundle.main.url(forResource: "cabextract", withExtension: nil)?
-            .deletingLastPathComponent() else { return }
-        // swiftlint:disable:next line_length
-        let winetricksCmd = #"PATH=\"\#(WhiskyWineInstaller.binFolder.path):\#(resourcesURL.path(percentEncoded: false)):$PATH\" WINE=wine64 WINEPREFIX=\"\#(bottle.url.path)\" \"\#(winetricksURL.path(percentEncoded: false))\" \#(command)"#
+            .deletingLastPathComponent() else {
+            Logger.wineKit.error("Winetricks resources (cabextract) are missing")
+            return
+        }
 
+        let scriptURL: URL
+        do {
+            scriptURL = try makeScript(command: command, bottle: bottle, resourcesURL: resourcesURL)
+        } catch {
+            Logger.wineKit.error("Failed to write winetricks script: \(error)")
+            showError(command: command, description: error.localizedDescription)
+            return
+        }
+
+        // A temp script avoids passing shell syntax through the user's login
+        // shell (fish/xonsh/nushell), which does not accept `VAR=... cmd`.
+        let shellCommand = "bash \(ShellQuoting.quoted(scriptURL.path(percentEncoded: false)))"
         let script = """
         tell application "Terminal"
             activate
-            do script "\(winetricksCmd)"
+            do script "\(shellCommand.appleScriptQuoted)"
         end tell
         """
 
@@ -63,34 +78,57 @@ class Winetricks {
             appleScript.executeAndReturnError(&error)
 
             if let error = error {
-                print(error)
+                Logger.wineKit.error("AppleScript error: \(error)")
                 if let description = error["NSAppleScriptErrorMessage"] as? String {
-                    await MainActor.run {
-                        let alert = NSAlert()
-                        alert.messageText = String(localized: "alert.message")
-                        alert.informativeText = String(localized: "alert.info")
-                            + " \(command): "
-                            + description
-                        alert.alertStyle = .critical
-                        alert.addButton(withTitle: String(localized: "button.ok"))
-                        alert.runModal()
-                    }
+                    showError(command: command, description: description)
                 }
             }
         }
     }
 
+    private static func makeScript(command: String, bottle: Bottle, resourcesURL: URL) throws -> URL {
+        let pathPrefix = "\(WhiskyWineInstaller.binFolder.path(percentEncoded: false)):"
+            + "\(resourcesURL.path(percentEncoded: false))"
+        let body = """
+        #!/bin/bash
+        trap 'rm -f -- "$0"' EXIT
+        export PATH=\(ShellQuoting.quoted(pathPrefix)):"$PATH"
+        export WINE=wine64
+        export \(ShellQuoting.assignment("WINEPREFIX", bottle.url.path(percentEncoded: false)))
+        \(ShellQuoting.commandLine([winetricksURL.path(percentEncoded: false), command]))
+        """
+
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "whisky-winetricks-\(UUID().uuidString).sh")
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                              ofItemAtPath: url.path(percentEncoded: false))
+        return url
+    }
+
+    @MainActor
+    private static func showError(command: String, description: String) {
+        let alert = NSAlert()
+        alert.messageText = String(localized: "alert.message")
+        alert.informativeText = String(localized: "alert.info")
+            + " \(command): "
+            + description
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: String(localized: "button.ok"))
+        alert.runModal()
+    }
+
     static func parseVerbs() async -> [WinetricksCategory] {
         // Grab the verbs file
         let verbsURL = WhiskyWineInstaller.libraryFolder.appending(path: "verbs.txt")
-        let verbs: String = await { () async -> String in
-            do {
-                let (data, _) = try await URLSession.shared.data(from: verbsURL)
-                return String(data: data, encoding: .utf8) ?? String()
-            } catch {
-                return String()
-            }
-        }()
+        let verbs: String
+        do {
+            // `verbs.txt` is a local file, not a network resource.
+            verbs = try String(contentsOf: verbsURL, encoding: .utf8)
+        } catch {
+            Logger.wineKit.error("Failed to read winetricks verbs: \(error)")
+            return []
+        }
 
         // Read the file line by line
         let lines = verbs.components(separatedBy: "\n")

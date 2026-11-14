@@ -18,7 +18,7 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 - [x] P0-8 Main-actor isolation for observed UI state — #1131 #1159 #1151 — done: Rosetta install state, process list fetch/kill, bottle creation settings and program scans all mutate on the main actor; verified typecheck
 ### P1
 - [x] P1-9 ShellQuoting + launch/env quoting — #904 — done: single-quote helper, launch paths/env values quoted, AppleScript escaping for terminal commands; self-test + typecheck pass
-- [ ] P1-10 Winetricks via temp bash script — #470 #1011
+- [x] P1-10 Winetricks via temp bash script — #470 #1011 — done: temp executable script with quoted PATH/WINEPREFIX/verb, Terminal runs `bash <script>`, script self-deletes; verbs read as a local file; typecheck passes
 - [ ] P1-11 Remove startup volume probes (#906)
 - [ ] P1-12 Edit-menu/Cmd-A bottle toggle — #1060
 - [ ] P1-13 Blocklist dedupe — #431
