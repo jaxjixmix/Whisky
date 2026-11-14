@@ -80518,6 +80518,40 @@
         }
       }
     },
+    "setup.whiskywine.error.archiveMissingRuntime" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The downloaded archive did not contain a Wine runtime. Please try again."
+          }
+        },
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The downloaded archive did not contain a Wine runtime. Please try again."
+          }
+        }
+      }
+    },
+    "setup.whiskywine.error.insufficientSpace" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough free space to install the Wine runtime: %1$@ available, but about %2$@ is needed. Free up space and try again."
+          }
+        },
+        "en-GB" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not enough free space to install the Wine runtime: %1$@ available, but about %2$@ is needed. Free up space and try again."
+          }
+        }
+      }
+    },
     "setup.whiskywine.error.tarballMissing" : {
       "extractionState" : "manual",
       "localizations" : {

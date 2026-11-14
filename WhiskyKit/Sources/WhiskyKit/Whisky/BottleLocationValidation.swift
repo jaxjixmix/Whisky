@@ -175,7 +175,9 @@ public enum BottleLocationValidation {
     /// counts purgeable space, so it errs optimistic and won't false-positive).
     /// However, that sometimes doesn't work on removable drives, so we fall
     /// back to normal figure.
-    private static func availableCapacity(at directory: URL) -> Int64? {
+    ///
+    /// Internal so the runtime installer can reuse the same probe.
+    static func availableCapacity(at directory: URL) -> Int64? {
         let isExternalOrCustom: Bool = {
             guard let values = try? directory.resourceValues(forKeys: [.volumeIsInternalKey]) else { return false }
             // nil, not false, on the removable volumes this exists for.

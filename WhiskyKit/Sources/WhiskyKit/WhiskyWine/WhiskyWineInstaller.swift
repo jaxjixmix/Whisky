@@ -30,10 +30,26 @@ public enum WhiskyWineInstallError: LocalizedError, Equatable {
     /// OS purged the temporary download before installation ran.
     case tarballNotFound
 
+    /// There is not enough free space on the runtime's volume to extract the
+    /// new runtime while the current one is still in place.
+    case insufficientDiskSpace(requiredBytes: Int64, availableBytes: Int64)
+
+    /// The archive extracted successfully but did not contain the expected
+    /// `Libraries/` runtime tree.
+    case archiveMissingRuntime
+
     public var errorDescription: String? {
         switch self {
         case .tarballNotFound:
             String(localized: "setup.whiskywine.error.tarballMissing")
+        case let .insufficientDiskSpace(requiredBytes, availableBytes):
+            String(
+                format: String(localized: "setup.whiskywine.error.insufficientSpace"),
+                ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file),
+                ByteCountFormatter.string(fromByteCount: requiredBytes, countStyle: .file)
+            )
+        case .archiveMissingRuntime:
+            String(localized: "setup.whiskywine.error.archiveMissingRuntime")
         }
     }
 }
@@ -184,31 +200,101 @@ public class WhiskyWineInstaller {
         try install(tarball: from, into: applicationFolder)
     }
 
-    /// Extracts a WhiskyWine tarball into `destination`, replacing any existing
-    /// `Libraries/` runtime there. Factored out of ``install(from:)`` so
-    /// extraction can be tested against a temporary directory without touching
-    /// the real application support folder.
+    /// Extracts a WhiskyWine tarball into `destination`, replacing the existing
+    /// `Libraries/` runtime only after the new tree has been extracted and
+    /// validated. Factored out of ``install(from:)`` so extraction can be tested
+    /// against a temporary directory without touching the real application
+    /// support folder.
     ///
-    /// Only the `Libraries` subfolder is removed before extraction. The
-    /// destination is the live Application Support folder, which also holds
+    /// The destination is the live Application Support folder, which also holds
     /// unrelated app state (e.g. the analytics SDK's anonymous ID and queued
-    /// events) — wiping the whole folder destroyed that state on every runtime
-    /// install and update.
+    /// events), so only `Libraries` is replaced.
     static func install(tarball: URL, into destination: URL) throws {
+        try install(
+            tarball: tarball,
+            into: destination,
+            availableBytes: availableCapacity(at: destination)
+        )
+    }
+
+    /// Testable seam for ``install(tarball:into:)`` with the volume's free
+    /// space injected.
+    static func install(
+        tarball: URL,
+        into destination: URL,
+        availableBytes: Int64?
+    ) throws {
         // Verify the tarball exists before modifying the destination, so a
         // purged temp file can't leave the destination half-rebuilt.
         guard FileManager.default.fileExists(atPath: tarball.path) else {
             throw WhiskyWineInstallError.tarballNotFound
         }
 
-        let existingRuntime = destination.appending(path: "Libraries")
-        if FileManager.default.fileExists(atPath: existingRuntime.path) {
-            try FileManager.default.removeItem(at: existingRuntime)
+        // Check before touching the destination: a failed extraction must not
+        // cost the user the runtime they already have.
+        if let required = requiredFreeSpace(forTarballAt: tarball),
+           let availableBytes,
+           availableBytes < required {
+            throw WhiskyWineInstallError.insufficientDiskSpace(
+                requiredBytes: required,
+                availableBytes: availableBytes
+            )
         }
+
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
 
-        try Tar.untar(tarBall: tarball, toURL: destination)
+        // Extract into a staging tree first. `Tar.untar` already stages the
+        // archive and audits symlinks; this outer stage lets us replace the
+        // live runtime only after the whole tree is complete and usable.
+        let stageRoot = destination.appending(path: ".install-staging-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: stageRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: stageRoot) }
+
+        try Tar.untar(tarBall: tarball, toURL: stageRoot)
+
+        let stagedRuntime = stageRoot.appending(path: "Libraries")
+        guard FileManager.default.fileExists(atPath: stagedRuntime.path) else {
+            throw WhiskyWineInstallError.archiveMissingRuntime
+        }
+
+        try replaceRuntime(at: stagedRuntime, in: destination)
     }
+
+    /// Free space an install needs before it starts extracting.
+    ///
+    /// The runtime archive expands to roughly 2.5× its compressed size, and the
+    /// previous tree stays in place until the swap, so require 3× plus 128 MiB
+    /// for filesystem overhead.
+    static func requiredFreeSpace(forTarballAt tarball: URL) -> Int64? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: tarball.path),
+              let size = attributes[.size] as? NSNumber
+        else { return nil }
+        return size.int64Value * 3 + 128 * 1_024 * 1_024
+    }
+
+    /// Available space on the volume that holds the runtime, if readable.
+    public static func availableRuntimeInstallSpace() -> Int64? {
+        availableCapacity(at: applicationFolder)
+    }
+
+    /// Reads available capacity on the volume containing `destination`.
+    ///
+    /// Returns `nil` when capacity cannot be read; callers fail open rather than
+    /// blocking an install over an unreadable volume.
+    static func availableCapacity(at destination: URL) -> Int64? {
+        let existing = BottleLocationValidation.nearestExistingDirectory(
+            for: destination,
+            fileManager: .default
+        )
+        return BottleLocationValidation.availableCapacity(at: existing)
+    }
+
+    /// A conservative pre-download space requirement for the runtime.
+    ///
+    /// The archive is roughly 330 MB compressed and expands to roughly 840 MB,
+    /// so download plus extraction needs about 1.2 GB. Leave headroom for
+    /// filesystem overhead and a resumed download.
+    public static let minimumFreeSpaceForDownload: Int64 = 1_500_000_000
 
     /// Computes the SHA-256 of a file by streaming it in chunks.
     ///
@@ -509,5 +595,36 @@ public class WhiskyWineInstaller {
             logger.error("WhiskyWine version plist unreadable, likely corrupt: \(error.localizedDescription)")
             return nil
         }
+    }
+}
+
+extension WhiskyWineInstaller {
+    /// Swaps a staged `Libraries` tree into place, restoring the previous tree
+    /// if the final move fails. The whole point of staging is that a failed
+    /// install leaves the old runtime usable.
+    private static func replaceRuntime(at stagedRuntime: URL, in destination: URL) throws {
+        let existingRuntime = destination.appending(path: "Libraries")
+        let backup = destination.appending(path: ".Libraries-backup-\(UUID().uuidString)")
+        if FileManager.default.fileExists(atPath: existingRuntime.path) {
+            try FileManager.default.moveItem(at: existingRuntime, to: backup)
+        }
+
+        do {
+            try FileManager.default.moveItem(at: stagedRuntime, to: existingRuntime)
+        } catch {
+            if FileManager.default.fileExists(atPath: backup.path) {
+                do {
+                    try FileManager.default.moveItem(at: backup, to: existingRuntime)
+                } catch {
+                    logger.error(
+                        "Failed to restore the previous runtime after a failed install: \(error.localizedDescription)"
+                    )
+                }
+            }
+            throw error
+        }
+
+        // The new tree is in place; the old one is disposable now.
+        try? FileManager.default.removeItem(at: backup)
     }
 }
