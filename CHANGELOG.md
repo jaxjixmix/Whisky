@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Runtime installs now extract into a staging tree and swap it in only after
+  the archive is complete, so a failed or out-of-space update leaves the
+  previous Wine runtime usable. A free-space check blocks the install before
+  it touches anything, and setup warns before downloading when the disk is
+  too full (frankea/Whisky#320).
+
 ## [3.9.3] - 2026-11-15 (App)
 
 ### Changed

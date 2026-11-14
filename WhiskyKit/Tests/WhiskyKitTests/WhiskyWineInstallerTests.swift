@@ -379,6 +379,129 @@ final class WhiskyWineInstallerTests: XCTestCase {
         let extracted = destination.appendingPathComponent("Libraries/marker.txt")
         XCTAssertTrue(FileManager.default.fileExists(atPath: extracted.path))
     }
+
+    // MARK: - Atomic install / free space (frankea/Whisky#320)
+
+    /// Builds a tiny tarball with a `Libraries/` (or `topLevel`) marker file.
+    private func makeRuntimeTarball(
+        in directory: URL,
+        topLevel: String = "Libraries"
+    ) throws -> URL {
+        let fixture = directory.appendingPathComponent("fixture-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: fixture, withIntermediateDirectories: true)
+        let source = fixture.appendingPathComponent(topLevel)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data("new".utf8).write(to: source.appendingPathComponent("marker.txt"))
+
+        let tarball = fixture.appendingPathComponent("archive").appendingPathExtension("tar.gz")
+        let tar = Process()
+        tar.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
+        tar.currentDirectoryURL = fixture
+        tar.arguments = ["-czf", tarball.path, topLevel]
+        try tar.run()
+        tar.waitUntilExit()
+        try XCTSkipUnless(tar.terminationStatus == 0, "Could not build the tar fixture")
+        return tarball
+    }
+
+    /// Writes a marker into an existing `Libraries/` tree and returns its URL.
+    private func makeExistingRuntime(in destination: URL) throws -> URL {
+        let marker = destination.appendingPathComponent("Libraries/old.txt")
+        try FileManager.default.createDirectory(
+            at: marker.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try Data("old".utf8).write(to: marker)
+        return marker
+    }
+
+    func testInstallWithInsufficientSpaceKeepsExistingRuntime() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let tarball = try makeRuntimeTarball(in: tempDir)
+        let destination = tempDir.appendingPathComponent("dest")
+        let oldMarker = try makeExistingRuntime(in: destination)
+
+        XCTAssertThrowsError(
+            try WhiskyWineInstaller.install(
+                tarball: tarball,
+                into: destination,
+                availableBytes: 0
+            )
+        ) { error in
+            guard let installError = error as? WhiskyWineInstallError,
+                  case .insufficientDiskSpace = installError
+            else {
+                XCTFail("Expected insufficientDiskSpace, got \(error)")
+                return
+            }
+        }
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: oldMarker.path),
+            "A failed space check must leave the previous runtime in place"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: destination.appendingPathComponent("Libraries/marker.txt").path
+            ),
+            "The new runtime must not be installed"
+        )
+    }
+
+    func testExtractionFailureKeepsExistingRuntime() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let badTarball = tempDir.appendingPathComponent("bad").appendingPathExtension("tar.gz")
+        try Data("not a tarball".utf8).write(to: badTarball)
+        let destination = tempDir.appendingPathComponent("dest")
+        let oldMarker = try makeExistingRuntime(in: destination)
+
+        XCTAssertThrowsError(
+            try WhiskyWineInstaller.install(
+                tarball: badTarball,
+                into: destination,
+                availableBytes: nil
+            )
+        )
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: oldMarker.path),
+            "A failed extraction must leave the previous runtime in place"
+        )
+    }
+
+    func testArchiveWithoutRuntimeKeepsExistingRuntime() throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let tarball = try makeRuntimeTarball(in: tempDir, topLevel: "Other")
+        let destination = tempDir.appendingPathComponent("dest")
+        let oldMarker = try makeExistingRuntime(in: destination)
+
+        XCTAssertThrowsError(
+            try WhiskyWineInstaller.install(
+                tarball: tarball,
+                into: destination,
+                availableBytes: nil
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? WhiskyWineInstallError,
+                WhiskyWineInstallError.archiveMissingRuntime
+            )
+        }
+
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: oldMarker.path),
+            "An archive without Libraries/ must leave the previous runtime in place"
+        )
+    }
 }
 
 // MARK: - SHA-256 Integrity Tests

@@ -16,6 +16,7 @@
 //  If not, see https://www.gnu.org/licenses/.
 //
 
+// swiftlint:disable file_length
 import AppKit
 import SemanticVersion
 import SwiftUI
@@ -247,6 +248,8 @@ extension WhiskyWineDownloadView {
             if await reuseExistingArchiveIfValid() {
                 return
             }
+
+            guard hasEnoughSpaceForDownload() else { return }
             startDownload(from: downloadURL)
         } catch {
             let errorMessage = error.localizedDescription
@@ -256,6 +259,28 @@ extension WhiskyWineDownloadView {
                 errorMessage
             ))
         }
+    }
+
+    /// Checks the runtime volume before starting a fresh download. Returns
+    /// `false` after setting a clear failure when the disk is too full.
+    @MainActor
+    private func hasEnoughSpaceForDownload() -> Bool {
+        let required = WhiskyWineInstaller.minimumFreeSpaceForDownload
+        guard let available = WhiskyWineInstaller.availableRuntimeInstallSpace(),
+              available < required
+        else { return true }
+
+        diagnostics.record(
+            "Insufficient free space before download: "
+                + "\(formatBytes(bytes: available)) available, "
+                + "\(formatBytes(bytes: required)) required"
+        )
+        setDownloadFailure(String(
+            format: String(localized: "setup.whiskywine.error.insufficientSpace"),
+            formatBytes(bytes: available),
+            formatBytes(bytes: required)
+        ))
+        return false
     }
 
     /// A finished archive can be left behind when the app quits between the
