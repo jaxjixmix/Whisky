@@ -98,6 +98,26 @@ final class LogRetentionTests: XCTestCase {
         XCTAssertEqual(occurrences, 0)
     }
 
+    func testWriteWineLogKeepsNewestOutputAfterCap() throws {
+        let dir = try makeTempDirectory()
+        let fileURL = dir.appendingPathComponent("restarted").appendingPathExtension("log")
+        try "".write(to: fileURL, atomically: true, encoding: .utf8)
+
+        let handle = try FileHandle(forWritingTo: fileURL)
+
+        // ~25 MiB of individually identifiable lines.
+        let padding = String(repeating: "C", count: 64 * 1_024 - 12)
+        for index in 0 ..< 400 {
+            handle.writeWineLog(line: "line\(String(format: "%04d", index)) \(padding)\n")
+        }
+        try handle.closeWineLog()
+
+        let text = try String(contentsOf: fileURL, encoding: .utf8)
+        XCTAssertFalse(text.contains("line0000"), "output from before the cap should be discarded")
+        XCTAssertTrue(text.contains("line0399"), "the newest output should survive the cap")
+        XCTAssertTrue(text.hasSuffix("line0399 \(padding)\n"), "the log should end with the newest line")
+    }
+
     func testWriteWineLogIsThreadSafeAndMarkerAppearsOnce() throws {
         let dir = try makeTempDirectory()
         let fileURL = dir.appendingPathComponent("concurrent").appendingPathExtension("log")
