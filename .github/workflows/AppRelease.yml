@@ -60,8 +60,20 @@ jobs:
       - name: Zip
         run: ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Release/Whisky.app Whisky.zip
 
+      - name: Create DMG
+        run: |
+          set -euo pipefail
+          app="build/Build/Products/Release/Whisky.app"
+          mkdir -p build/dmg
+          ditto "$app" build/dmg/Whisky.app
+          ln -s /Applications build/dmg/Applications
+          hdiutil create -volname "Whisky" -srcfolder build/dmg -ov -format UDZO Whisky.dmg
+          hdiutil verify Whisky.dmg
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Whisky-unsigned
-          path: Whisky.zip
+          path: |
+            Whisky.zip
+            Whisky.dmg
