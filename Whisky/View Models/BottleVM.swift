@@ -19,6 +19,7 @@
 import Foundation
 import SemanticVersion
 import WhiskyKit
+import os.log
 
 // swiftlint:disable:next todo
 // TODO: Don't use unchecked!
@@ -27,6 +28,9 @@ final class BottleVM: ObservableObject, @unchecked Sendable {
 
     var bottlesList = BottleData()
     @Published var bottles: [Bottle] = []
+    /// Set when a bottle was created but its Wine prefix could not be prepared.
+    /// The bottle stays registered so the user can retry or remove it.
+    @Published var creationError: String?
 
     @MainActor
     func loadBottles() {
@@ -41,34 +45,48 @@ final class BottleVM: ObservableObject, @unchecked Sendable {
         let newBottleDir = bottleURL.appending(path: UUID().uuidString)
 
         Task.detached {
-            var bottleId: Bottle?
+            var bottle: Bottle?
             do {
                 try FileManager.default.createDirectory(atPath: newBottleDir.path(percentEncoded: false),
                                                         withIntermediateDirectories: true)
-                let bottle = Bottle(bottleUrl: newBottleDir, inFlight: true)
-                bottleId = bottle
+                let newBottle = Bottle(bottleUrl: newBottleDir, inFlight: true)
+                bottle = newBottle
 
+                // Register and save before Wine runs. A Wine failure must not
+                // leave a bottle directory that no later launch knows about.
                 await MainActor.run {
-                    self.bottles.append(bottle)
+                    newBottle.settings.name = bottleName
+                    newBottle.settings.windowsVersion = winVersion
+                    if !self.bottlesList.paths.contains(newBottleDir) {
+                        self.bottlesList.paths.append(newBottleDir)
+                    }
+                    self.bottles.append(newBottle)
+                    self.creationError = nil
                 }
 
-                bottle.settings.windowsVersion = winVersion
-                bottle.settings.name = bottleName
-                try await Wine.changeWinVersion(bottle: bottle, win: winVersion)
+                try await Wine.changeWinVersion(bottle: newBottle, win: winVersion)
                 let wineVer = try await Wine.wineVersion()
-                bottle.settings.wineVersion = SemanticVersion(wineVer) ?? SemanticVersion(0, 0, 0)
-                // Add record
+
                 await MainActor.run {
-                    self.bottlesList.paths.append(newBottleDir)
+                    newBottle.settings.wineVersion = SemanticVersion(wineVer) ?? SemanticVersion(0, 0, 0)
+                    newBottle.inFlight = false
+                    newBottle.isAvailable = true
                     self.loadBottles()
                 }
             } catch {
-                print("Failed to create new bottle: \(error)")
-                if let bottle = bottleId {
+                Logger.wineKit.error("Failed to create bottle: \(error, privacy: .public)")
+                if let bottle {
+                    // Keep the bottle visible and usable: the directory and
+                    // metadata exist, and Wine may succeed on a retry.
                     await MainActor.run {
-                        if let index = self.bottles.firstIndex(of: bottle) {
-                            self.bottles.remove(at: index)
-                        }
+                        bottle.inFlight = false
+                        bottle.isAvailable = true
+                        self.loadBottles()
+                        self.creationError = error.localizedDescription
+                    }
+                } else {
+                    await MainActor.run {
+                        self.creationError = error.localizedDescription
                     }
                 }
             }

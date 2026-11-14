@@ -89,6 +89,16 @@ struct ContentView: View {
         .onOpenURL { url in
             openedFileURL = url
         }
+        .alert("create.error.title", isPresented: Binding(
+            get: { bottleVM.creationError != nil },
+            set: { if !$0 { bottleVM.creationError = nil } }
+        )) {
+            Button("button.ok") {
+                bottleVM.creationError = nil
+            }
+        } message: {
+            Text(bottleVM.creationError ?? "")
+        }
         .task {
             bottleVM.loadBottles()
             bottlesLoaded = true

@@ -8164,6 +8164,16 @@
         }
       }
     },
+    "create.error.title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bottle created with an error"
+          }
+        }
+      }
+    },
     "create.name" : {
       "localizations" : {
         "ar" : {
