@@ -28,6 +28,7 @@ struct WhiskyWineDownloadView: View {
     @State private var observation: NSKeyValueObservation?
     @State private var startTime: Date?
     @State private var downloadError: String?
+    @State private var preflightTask: Task<Void, Never>?
     @Binding var tarLocation: URL
     @Binding var path: [SetupStage]
 
@@ -102,6 +103,8 @@ struct WhiskyWineDownloadView: View {
             startDownload()
         }
         .onDisappear {
+            preflightTask?.cancel()
+            preflightTask = nil
             downloadTask?.cancel()
             observation?.invalidate()
             observation = nil
@@ -127,6 +130,7 @@ struct WhiskyWineDownloadView: View {
         downloadTask?.cancel()
         observation?.invalidate()
         observation = nil
+        preflightTask?.cancel()
 
         downloadError = nil
         fractionProgress = 0
@@ -134,11 +138,19 @@ struct WhiskyWineDownloadView: View {
         totalBytes = 0
         downloadSpeed = 0
 
-        guard let url = WhiskyWineInstaller.downloadURL else {
-            downloadError = String(localized: "setup.whiskywine.download.failed")
-            return
+        preflightTask = Task {
+            guard let url = await WhiskyWineInstaller.latestDownloadURL() else {
+                if !Task.isCancelled {
+                    downloadError = String(localized: "setup.whiskywine.manifest.failed")
+                }
+                return
+            }
+            guard !Task.isCancelled else { return }
+            startDownload(from: url)
         }
+    }
 
+    private func startDownload(from url: URL) {
         let task = Self.session.downloadTask(with: url) { fileURL, response, error in
             let (stableURL, failure) = Self.stableDownload(
                 fileURL: fileURL, response: response, error: error

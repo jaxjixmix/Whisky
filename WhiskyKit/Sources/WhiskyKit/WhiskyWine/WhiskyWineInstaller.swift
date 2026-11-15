@@ -58,12 +58,22 @@ public class WhiskyWineInstaller {
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
-    public static let downloadURLString = "https://data.getwhisky.app/Wine/Libraries.tar.gz"
-    public static let versionPlistURLString = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
     static let maxManifestBytes = 1_048_576
 
-    public static var downloadURL: URL? {
-        URL(string: downloadURLString)
+    public static func downloadURL(for version: SemanticVersion) -> URL? {
+        URL(string: DistributionConfig.librariesURL(version: version.description))
+    }
+
+    /// Preflight the manifest and return the matching archive URL. Release
+    /// builds only return a URL for a signed manifest.
+    public static func latestDownloadURL() async -> URL? {
+        guard let manifest = await fetchRemoteVersion() else { return nil }
+
+        #if !DEBUG
+        guard manifest.sha256 != nil, manifest.signature != nil else { return nil }
+        #endif
+
+        return downloadURL(for: manifest.version)
     }
 
     public static func isWhiskyWineInstalled() -> Bool {
@@ -221,6 +231,6 @@ struct WhiskyWineVersion: Codable {
 
     /// Canonical payload the release pipeline signs.
     var signingPayload: String {
-        "WhiskyWine|\(version)|\(sha256 ?? "")|\(WhiskyWineInstaller.downloadURLString)"
+        "WhiskyWine|\(version)|\(sha256 ?? "")|\(DistributionConfig.librariesURL(version: version.description))"
     }
 }

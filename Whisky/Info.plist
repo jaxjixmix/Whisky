@@ -54,7 +54,11 @@
 		</dict>
 	</array>
 	<key>SUFeedURL</key>
-	<string>https://data.getwhisky.app/appcast.xml</string>
+	<string>https://jaxjixmix.github.io/Whisky/appcast.xml</string>
+	<key>WhiskyDistributionBaseURL</key>
+	<string>https://jaxjixmix.github.io/Whisky</string>
+	<key>WhiskyReleasesBaseURL</key>
+	<string>https://github.com/jaxjixmix/Whisky/releases/download</string>
 	<key>SUPublicEDKey</key>
 	<string>tnZFAvPUfCpM7Tr7Sx5gKRm6BUQQ6htJQeOMP44evms=</string>
 	<key>UTExportedTypeDeclarations</key>

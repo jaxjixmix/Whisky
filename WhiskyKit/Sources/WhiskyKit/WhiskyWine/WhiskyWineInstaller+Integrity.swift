@@ -90,7 +90,7 @@ extension WhiskyWineInstaller {
 
     /// Fetch and decode the remote version manifest, bounded to 1 MB.
     static func fetchRemoteVersion() async -> WhiskyWineVersion? {
-        guard let url = URL(string: versionPlistURLString) else { return nil }
+        guard let url = URL(string: DistributionConfig.versionPlistURL) else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
 

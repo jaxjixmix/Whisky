@@ -17328,6 +17328,16 @@
         }
       }
     },
+    "setup.whiskywine.manifest.failed" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not fetch the runtime manifest. Check your connection and the release server."
+          }
+        }
+      }
+    },
     "setup.whiskywine.download.subtitle" : {
       "localizations" : {
         "ar" : {
