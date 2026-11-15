@@ -128,7 +128,10 @@ public class WhiskyWineInstaller {
 
         if let remoteUrl = URL(string: versionPlistURL) {
             remoteVersion = await withCheckedContinuation { continuation in
-                URLSession(configuration: .ephemeral).dataTask(with: URLRequest(url: remoteUrl)) { data, _, error in
+                var request = URLRequest(url: remoteUrl)
+                // A stalled version check must not leave the update task hanging.
+                request.timeoutInterval = 15
+                URLSession(configuration: .ephemeral).dataTask(with: request) { data, _, error in
                     do {
                         if error == nil, let data = data {
                             let decoder = PropertyListDecoder()

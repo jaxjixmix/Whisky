@@ -31,6 +31,14 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 - `/tmp/typecheck-whisky.sh` (app Swift sources, Sparkle stub)
 - Commit each verified item separately.
 
+## Final Verification
+
+- Exact command: `cd /Users/mojics/orca/workspaces/whisky/Thigns-to-deliver/WhiskyKit && swift build && swift run -Xswiftc -enable-testing WhiskyKitSelfTest`
+- App target: `/tmp/typecheck-whisky.sh` (Sparkle stub; no Xcode installed)
+- Catalog: `python3 -c "import json; json.load(open('Whisky/Localizable.xcstrings'))"`
+- Result: WhiskyKit builds; 12 self-tests pass; app sources typecheck; catalog JSON valid; `git diff --check` clean.
+- Note: the app target was **not** built or run (Xcode is unavailable in this environment). Typecheck is the gate for app-only changes.
+
 ## Rules
 - Smallest complete change, existing patterns, no new dependencies.
 - Non-trivial logic gets a WhiskyKit test.
