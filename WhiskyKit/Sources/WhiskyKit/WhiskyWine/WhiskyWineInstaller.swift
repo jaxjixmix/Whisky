@@ -268,6 +268,7 @@ public class WhiskyWineInstaller {
                 guard error == nil,
                       let http = response as? HTTPURLResponse,
                       (200...299).contains(http.statusCode),
+                      http.expectedContentLength <= Int64(maxManifestBytes),
                       let data,
                       data.count <= maxManifestBytes else {
                     continuation.resume(returning: nil)

@@ -40,6 +40,9 @@ struct WhiskyWineDownloadView: View {
         return URLSession(configuration: configuration)
     }()
 
+    /// The runtime archive is under 1 GB; refuse a runaway response.
+    private static let maxRuntimeBytes: Int64 = 2_000_000_000
+
     private var isIndeterminate: Bool {
         totalBytes <= 0
     }
@@ -156,27 +159,36 @@ struct WhiskyWineDownloadView: View {
 
         observation = task.observe(\.countOfBytesReceived) { task, _ in
             Task { @MainActor in
-                let received = task.countOfBytesReceived
-                let expected = task.countOfBytesExpectedToReceive
-
-                self.completedBytes = received
-                self.totalBytes = max(expected, 0)
-
-                if self.totalBytes > 0 {
-                    self.fractionProgress = min(max(Double(received) / Double(self.totalBytes), 0), 1)
-                }
-
-                let now = Date()
-                let elapsed = now.timeIntervalSince(self.startTime ?? now)
-                if elapsed > 0 && received > 0 {
-                    self.downloadSpeed = Double(received) / elapsed
-                }
+                self.updateProgress(task)
             }
         }
 
         downloadTask = task
         startTime = Date()
         task.resume()
+    }
+
+    private func updateProgress(_ task: URLSessionDownloadTask) {
+        let received = task.countOfBytesReceived
+        let expected = task.countOfBytesExpectedToReceive
+
+        if expected > Self.maxRuntimeBytes || received > Self.maxRuntimeBytes {
+            task.cancel()
+            downloadError = String(localized: "setup.whiskywine.download.tooLarge")
+            return
+        }
+
+        completedBytes = received
+        totalBytes = max(expected, 0)
+        if totalBytes > 0 {
+            fractionProgress = min(max(Double(received) / Double(totalBytes), 0), 1)
+        }
+
+        let now = Date()
+        let elapsed = now.timeIntervalSince(startTime ?? now)
+        if elapsed > 0 && received > 0 {
+            downloadSpeed = Double(received) / elapsed
+        }
     }
 
     /// URLSession deletes the completion-handler file when the closure

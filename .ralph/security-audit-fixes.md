@@ -10,7 +10,7 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 - [x] S4 Shortcut script — done: 0755 and atomic writes (replaces a symlink); typecheck OK.
 - [x] S5 Pipe buffer cap — done: 1 MB cap, 2 MB no-newline test passes.
 - [x] S6 Parser caps — done: icon size/file bounds, bitmap dimension/colour-table caps, `.lnk` 1 MB cap; tests pass.
-- [ ] S7 Download caps — 2 GB runtime, 1 MB version plist, localized error.
+- [x] S7 Download caps — done: 2 GB runtime cap with error/retry, 1 MB manifest cap, localized key; typecheck OK.
 - [ ] S8 Log permissions — 0600 files, 0700 folder; test.
 
 ## Verification after each item
