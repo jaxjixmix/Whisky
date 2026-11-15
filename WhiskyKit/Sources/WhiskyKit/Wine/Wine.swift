@@ -122,10 +122,11 @@ public class Wine {
         ]
         var wineCmd = ShellQuoting.commandLine(words)
 
-        // `args` is user-authored command-line text (it may contain several
-        // arguments and quotes); keep it verbatim.
-        if !args.isEmpty {
-            wineCmd += " " + args
+        // Match the direct launch path (which splits on whitespace) and quote
+        // every word: `args` can come from a bottle's settings file.
+        let argumentWords = args.split(whereSeparator: \.isWhitespace).map(String.init)
+        if !argumentWords.isEmpty {
+            wineCmd += " " + ShellQuoting.commandLine(argumentWords)
         }
 
         let env = constructWineEnvironment(for: bottle, environment: environment)

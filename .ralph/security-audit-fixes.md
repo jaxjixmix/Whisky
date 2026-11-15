@@ -5,7 +5,7 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 
 ## Checklist
 - [x] S1 Root shell injection in CLI install — done: `quoted form of` + `appleScriptQuoted`; typecheck OK.
-- [ ] S2 Program args shell injection — split/quote args in `Wine.generateRunCommand`; regression test.
+- [x] S2 Program args shell injection — done: args split + ShellQuoting; regression test passes.
 - [ ] S3 Runtime integrity — optional sha256/signature in `WhiskyWineVersion`; verify SHA-256 + Ed25519 (pinned key); strict release / warn debug; reject symlinked runtime; tests.
 - [ ] S4 Shortcut script — 0755, atomic write, remove existing symlink.
 - [ ] S5 Pipe buffer cap — 1 MB cap in `PipeLineBuffer`; 2 MB no-newline test.
