@@ -38,6 +38,10 @@ let package = Package(
             name: "WhiskyKit",
             dependencies: ["SemanticVersion"]
         ),
+        .testTarget(
+            name: "WhiskyKitTests",
+            dependencies: ["WhiskyKit"]
+        ),
         .executableTarget(
             name: "WhiskyKitSelfTest",
             dependencies: ["WhiskyKit"],
