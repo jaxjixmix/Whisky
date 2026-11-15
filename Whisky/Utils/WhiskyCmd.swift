@@ -18,17 +18,18 @@
 
 import Foundation
 import AppKit
+import WhiskyKit
 
 class WhiskyCmd {
     static func install() async {
         let whiskyCmdURL = Bundle.main.url(forResource: "WhiskyCmd", withExtension: nil)
 
         if let whiskyCmdURL = whiskyCmdURL {
-            // swiftlint:disable line_length
-            let script = """
-            do shell script "ln -fs \(whiskyCmdURL.path(percentEncoded: false)) /usr/local/bin/whisky" with administrator privileges
-            """
-            // swiftlint:enable line_length
+            // Quote for the shell (quoted form of) and for AppleScript; the
+            // app bundle path is user-controlled.
+            let path = whiskyCmdURL.path(percentEncoded: false).appleScriptQuoted
+            let script = "do shell script \"ln -fs \" & quoted form of \"\(path)\" "
+                + "& \" /usr/local/bin/whisky\" with administrator privileges"
 
             var error: NSDictionary?
             // Use AppleScript because somehow in 2023 Apple doesn't have good privileged file ops APIs

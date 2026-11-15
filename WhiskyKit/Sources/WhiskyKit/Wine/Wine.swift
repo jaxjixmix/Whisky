@@ -122,10 +122,11 @@ public class Wine {
         ]
         var wineCmd = ShellQuoting.commandLine(words)
 
-        // `args` is user-authored command-line text (it may contain several
-        // arguments and quotes); keep it verbatim.
-        if !args.isEmpty {
-            wineCmd += " " + args
+        // Match the direct launch path (which splits on whitespace) and quote
+        // every word: `args` can come from a bottle's settings file.
+        let argumentWords = args.split(whereSeparator: \.isWhitespace).map(String.init)
+        if !argumentWords.isEmpty {
+            wineCmd += " " + ShellQuoting.commandLine(argumentWords)
         }
 
         let env = constructWineEnvironment(for: bottle, environment: environment)
@@ -257,26 +258,6 @@ enum RegistryType: String {
     case dword = "REG_DWORD"
     case qword = "REG_QWORD"
     case string = "REG_SZ"
-}
-
-extension Wine {
-    public static let logsFolder = FileManager.default.urls(
-        for: .libraryDirectory, in: .userDomainMask
-    )[0].appending(path: "Logs").appending(path: Bundle.whiskyBundleIdentifier)
-
-    public static func makeFileHandle() throws -> FileHandle {
-        if !FileManager.default.fileExists(atPath: Self.logsFolder.path) {
-            try FileManager.default.createDirectory(at: Self.logsFolder, withIntermediateDirectories: true)
-        }
-
-        let dateString = Date.now.ISO8601Format()
-        // Two runs in the same second used to overwrite each other's log.
-        let fileURL = Self.logsFolder
-            .appending(path: "\(dateString)-\(UUID().uuidString.prefix(8))")
-            .appendingPathExtension("log")
-        try "".write(to: fileURL, atomically: true, encoding: .utf8)
-        return try FileHandle(forWritingTo: fileURL)
-    }
 }
 
 extension Wine {

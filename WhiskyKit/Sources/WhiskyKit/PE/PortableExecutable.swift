@@ -143,6 +143,9 @@ public struct PEFile: Hashable, Equatable, Sendable {
         return rsrc(handle: handle)
     }
 
+    /// Icons are small; a malformed resource entry must not request gigabytes.
+    private static let maxIconBytes: UInt32 = 16 * 1_024 * 1_024
+
     /// The best icon for this executable
     /// - Returns: An `NSImage` if there is a renderable icon in the resource directory table
     public func bestIcon() -> NSImage? {
@@ -154,9 +157,15 @@ public struct PEFile: Hashable, Equatable, Sendable {
         }
 
         guard let rsrc = rsrc(handle: handle, types: [.icon]) else { return nil }
+        guard let fileSize = try? handle.seekToEnd() else { return nil }
+
         let icons = rsrc.allEntries
             .compactMap { entry -> NSImage? in
-                guard let offset = entry.resolveRVA(sections: sections) else { return nil }
+                guard entry.size <= Self.maxIconBytes,
+                      let offset = entry.resolveRVA(sections: sections),
+                      UInt64(offset) + UInt64(entry.size) <= fileSize else {
+                    return nil
+                }
                 let bitmapInfo = BitmapInfoHeader(handle: handle, offset: UInt64(offset))
                 if bitmapInfo.size != 40 {
                     do {

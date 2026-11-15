@@ -23,6 +23,10 @@ import os.log
 public enum WhiskyWineInstallError: LocalizedError {
     case tarballMissing
     case invalidArchive
+    case checksumMismatch
+    case invalidSignature
+    case missingIntegrityMetadata
+    case manifestUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -30,6 +34,14 @@ public enum WhiskyWineInstallError: LocalizedError {
             return "The downloaded runtime archive is missing."
         case .invalidArchive:
             return "The downloaded archive does not contain a usable Wine runtime."
+        case .checksumMismatch:
+            return "The downloaded runtime does not match its checksum."
+        case .invalidSignature:
+            return "The runtime manifest signature is invalid."
+        case .missingIntegrityMetadata:
+            return "The runtime manifest is not signed; refusing to install it."
+        case .manifestUnavailable:
+            return "Could not fetch the signed runtime manifest."
         }
     }
 }
@@ -46,6 +58,14 @@ public class WhiskyWineInstaller {
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
+    public static let downloadURLString = "https://data.getwhisky.app/Wine/Libraries.tar.gz"
+    public static let versionPlistURLString = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
+    static let maxManifestBytes = 1_048_576
+
+    public static var downloadURL: URL? {
+        URL(string: downloadURLString)
+    }
+
     public static func isWhiskyWineInstalled() -> Bool {
         return isRuntimePresent(inLibraryFolder: libraryFolder)
     }
@@ -53,22 +73,51 @@ public class WhiskyWineInstaller {
     /// Whether `folder` contains both the version record and the `wine64`
     /// binary. A half-extracted runtime must not count as installed.
     static func isRuntimePresent(inLibraryFolder folder: URL) -> Bool {
+        guard isRegularDirectory(folder) else { return false }
+
         let versionPlist = folder
             .appending(path: "WhiskyWineVersion")
             .appendingPathExtension("plist")
-        guard whiskyWineInfo(at: versionPlist) != nil else { return false }
+        guard isRegularFile(versionPlist), whiskyWineInfo(at: versionPlist) != nil else {
+            return false
+        }
 
         let wine64 = folder
             .appending(path: "Wine")
             .appending(path: "bin")
             .appending(path: "wine64")
-        return FileManager.default.fileExists(atPath: wine64.path(percentEncoded: false))
+        return isRegularFile(wine64)
     }
 
-    /// Extract into a staging directory, validate it, then swap it in. A bad
-    /// archive leaves the installed runtime untouched (upstream #1275/#1278).
-    public static func install(from: URL) throws {
-        try install(tarball: from, into: applicationFolder)
+    private static func isRegularFile(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else {
+            return false
+        }
+        return values.isRegularFile == true && values.isSymbolicLink != true
+    }
+
+    private static func isRegularDirectory(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else {
+            return false
+        }
+        return values.isDirectory == true && values.isSymbolicLink != true
+    }
+
+    /// Fetch the manifest, verify the archive, then install it. Release builds
+    /// require a signed manifest; debug builds warn and continue.
+    public static func install(from tarball: URL) async throws {
+        guard let manifest = await fetchRemoteVersion() else {
+            #if DEBUG
+            Logger.wineKit.warning("Runtime manifest unavailable; installing without integrity metadata")
+            try install(tarball: tarball, into: applicationFolder)
+            return
+            #else
+            throw WhiskyWineInstallError.manifestUnavailable
+            #endif
+        }
+
+        try verify(tarball: tarball, manifest: manifest)
+        try install(tarball: tarball, into: applicationFolder)
     }
 
     static func install(tarball: URL, into destination: URL) throws {
@@ -121,45 +170,23 @@ public class WhiskyWineInstaller {
     }
 
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {
-        let versionPlistURL = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
-        let localVersion = whiskyWineVersion()
-
-        var remoteVersion: SemanticVersion?
-
-        if let remoteUrl = URL(string: versionPlistURL) {
-            remoteVersion = await withCheckedContinuation { continuation in
-                var request = URLRequest(url: remoteUrl)
-                // A stalled version check must not leave the update task hanging.
-                request.timeoutInterval = 15
-                URLSession(configuration: .ephemeral).dataTask(with: request) { data, _, error in
-                    do {
-                        if error == nil, let data = data {
-                            let decoder = PropertyListDecoder()
-                            let remoteInfo = try decoder.decode(WhiskyWineVersion.self, from: data)
-                            let remoteVersion = remoteInfo.version
-
-                            continuation.resume(returning: remoteVersion)
-                            return
-                        }
-                        if let error = error {
-                            print(error)
-                        }
-                    } catch {
-                        print(error)
-                    }
-
-                    continuation.resume(returning: nil)
-                }.resume()
-            }
+        guard let localVersion = whiskyWineVersion(),
+              let remote = await fetchRemoteVersion() else {
+            return (false, SemanticVersion(0, 0, 0))
         }
 
-        if let localVersion = localVersion, let remoteVersion = remoteVersion {
-            if localVersion < remoteVersion {
-                return (true, remoteVersion)
-            }
+        #if !DEBUG
+        // Do not offer an update the installer would refuse.
+        guard remote.sha256 != nil, remote.signature != nil else {
+            Logger.wineKit.warning("Ignoring an unsigned WhiskyWine manifest in a release build")
+            return (false, SemanticVersion(0, 0, 0))
         }
+        #endif
 
-        return (false, SemanticVersion(0, 0, 0))
+        guard localVersion < remote.version else {
+            return (false, SemanticVersion(0, 0, 0))
+        }
+        return (true, remote.version)
     }
 
     public static func whiskyWineVersion() -> SemanticVersion? {
@@ -189,4 +216,11 @@ public class WhiskyWineInstaller {
 
 struct WhiskyWineVersion: Codable {
     var version: SemanticVersion = SemanticVersion(1, 0, 0)
+    var sha256: String?
+    var signature: String?
+
+    /// Canonical payload the release pipeline signs.
+    var signingPayload: String {
+        "WhiskyWine|\(version)|\(sha256 ?? "")|\(WhiskyWineInstaller.downloadURLString)"
+    }
 }

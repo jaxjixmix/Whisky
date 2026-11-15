@@ -34,12 +34,15 @@ class ProgramShortcut {
             \(program.generateTerminalCommand())
             """
             let scriptUrl = macos.appending(path: "launch")
+            // Atomic replace also replaces a pre-created symlink instead of
+            // writing through it.
             try script.write(to: scriptUrl,
-                             atomically: false,
+                             atomically: true,
                              encoding: .utf8)
 
-            // Make shell script runable
-            try FileManager.default.setAttributes([.posixPermissions: 0o777],
+            // Owner-writable, not world-writable: a shared shortcut must not
+            // let another local user edit the launch script.
+            try FileManager.default.setAttributes([.posixPermissions: 0o755],
                                                   ofItemAtPath: scriptUrl.path(percentEncoded: false))
 
             // Create Info.plist (set category for Game mode)
@@ -63,7 +66,7 @@ class ProgramShortcut {
             """
             try info.write(to: contents.appending(path: "Info")
                                        .appendingPathExtension("plist"),
-                           atomically: false,
+                           atomically: true,
                            encoding: .utf8)
 
             // Set bundle icon

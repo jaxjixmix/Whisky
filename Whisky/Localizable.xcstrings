@@ -17318,6 +17318,16 @@
         }
       }
     },
+    "setup.whiskywine.download.tooLarge" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The download is larger than Whisky supports."
+          }
+        }
+      }
+    },
     "setup.whiskywine.download.subtitle" : {
       "localizations" : {
         "ar" : {
