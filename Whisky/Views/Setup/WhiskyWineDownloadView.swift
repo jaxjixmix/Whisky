@@ -205,7 +205,7 @@ struct WhiskyWineDownloadView: View {
 
     /// URLSession deletes the completion-handler file when the closure
     /// returns, so move it to a stable path synchronously.
-    private static func stableDownload(
+    private nonisolated static func stableDownload(
         fileURL: URL?, response: URLResponse?, error: Error?
     ) -> (url: URL?, failure: String?) {
         if let error {
