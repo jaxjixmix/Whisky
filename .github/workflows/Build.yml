@@ -1,0 +1,36 @@
+name: Build
+
+concurrency:
+  group: build-${{ github.event.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build WhiskyKit
+        run: |
+          cd WhiskyKit
+          swift build
+
+      - name: Run self-tests
+        run: |
+          cd WhiskyKit
+          swift run -Xswiftc -enable-testing WhiskyKitSelfTest
+          swift run -Xswiftc -enable-testing WhiskyKitSecuritySelfTest
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Build app
+        run: |
+          xcodebuild -project Whisky.xcodeproj -scheme Whisky \
+            -configuration Debug -derivedDataPath "$RUNNER_TEMP/whisky-build" \
+            CODE_SIGNING_ALLOWED=NO build

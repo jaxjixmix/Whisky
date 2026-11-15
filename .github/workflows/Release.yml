@@ -9,18 +9,15 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
+      # Optional: configure WEBHOOK in the fork's repository secrets.
       - name: Create Discord Embed
+        continue-on-error: true
         uses: tsickert/discord-webhook@v5.3.0
         with:
           webhook-url: ${{ secrets.WEBHOOK }}
           embed-title: ${{ github.event.release.name }}
-          embed-url: https://github.com/Whisky-App/Whisky/releases/download/${{ github.event.release.tag_name }}/Whisky.zip
+          embed-url: ${{ github.event.release.html_url }}
           embed-description: ${{ github.event.release.body }}
           embed-color: 9442302
 
-      - name: Update Homebrew Cask
-        uses: macauley/action-homebrew-bump-cask@v1
-        with:
-          token: ${{secrets.BREW_TOKEN}}
-          org: Whisky-App
-          cask: whisky
+      # This fork has no Homebrew cask. See docs/RELEASE.md.
