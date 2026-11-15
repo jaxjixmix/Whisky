@@ -13,14 +13,14 @@ on:
   # the `changes` job below and a skipped run reports no status — required-check
   # names would need a carve-out for it.
   push:
-    branches: [main]
+    branches: [main, jaxjixmix/tilefish]
     paths-ignore: &docs-paths
       - '**.md'
       - 'docs/**'
       - 'images/**'
       - 'LICENSE'
   pull_request:
-    branches: [main]
+    branches: [main, jaxjixmix/tilefish]
     paths-ignore: *docs-paths
   workflow_dispatch:
 
@@ -234,6 +234,9 @@ jobs:
           key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
+
+      - name: Create UI test bottle fixture
+        run: ./scripts/prepare-ui-test-bottle.sh
 
       - name: Run WhiskyUITests
         run: |

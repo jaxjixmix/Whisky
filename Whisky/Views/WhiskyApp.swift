@@ -191,6 +191,7 @@ struct WhiskyApp: App {
                 }
                 .toast($audioDeviceToast)
         }
+        .defaultSize(width: 1_200, height: 800)
         .handlesExternalEvents(matching: ["*"])
         .commands {
             CommandGroup(after: .appInfo) {
