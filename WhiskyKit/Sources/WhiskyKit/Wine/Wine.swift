@@ -261,26 +261,6 @@ enum RegistryType: String {
 }
 
 extension Wine {
-    public static let logsFolder = FileManager.default.urls(
-        for: .libraryDirectory, in: .userDomainMask
-    )[0].appending(path: "Logs").appending(path: Bundle.whiskyBundleIdentifier)
-
-    public static func makeFileHandle() throws -> FileHandle {
-        if !FileManager.default.fileExists(atPath: Self.logsFolder.path) {
-            try FileManager.default.createDirectory(at: Self.logsFolder, withIntermediateDirectories: true)
-        }
-
-        let dateString = Date.now.ISO8601Format()
-        // Two runs in the same second used to overwrite each other's log.
-        let fileURL = Self.logsFolder
-            .appending(path: "\(dateString)-\(UUID().uuidString.prefix(8))")
-            .appendingPathExtension("log")
-        try "".write(to: fileURL, atomically: true, encoding: .utf8)
-        return try FileHandle(forWritingTo: fileURL)
-    }
-}
-
-extension Wine {
     enum RegistryKey: String {
         case currentVersion = #"HKLM\Software\Microsoft\Windows NT\CurrentVersion"#
         case macDriver = #"HKCU\Software\Wine\Mac Driver"#

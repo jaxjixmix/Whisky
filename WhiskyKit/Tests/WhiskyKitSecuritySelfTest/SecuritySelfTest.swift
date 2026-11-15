@@ -46,6 +46,7 @@ struct SecuritySelfTest {
         check(longLineBytes == 2_000_000, "long lines are chunked and preserved: \(longLineBytes)")
         check(bitmapRejectsBadDimensions(), "a bitmap with huge/negative dimensions is rejected")
         check(shortcutSizeCap(), "an oversized shortcut file is rejected")
+        check(logFileIsOwnerOnly(), "log files are owner-only")
 
         if failures > 0 {
             print("\(failures) security self-test(s) failed")
@@ -256,6 +257,28 @@ struct SecuritySelfTest {
             return ShellLinkHeader.getProgram(url: link, handle: handle, bottle: bottle) == nil
         } catch {
             print("shortcut test error: \(error)")
+            return false
+        }
+    }
+
+    static func logFileIsOwnerOnly() -> Bool {
+        let fileManager = FileManager.default
+        let folder = Wine.logsFolder
+        let before = Set((try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? [])
+
+        do {
+            let handle = try Wine.makeFileHandle()
+            try handle.close()
+            let after = Set((try? fileManager.contentsOfDirectory(atPath: folder.path)) ?? [])
+            guard let newFile = after.subtracting(before).first else { return false }
+
+            let url = folder.appending(path: newFile)
+            defer { try? fileManager.removeItem(at: url) }
+            let attributes = try fileManager.attributesOfItem(atPath: url.path)
+            let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue
+            return permissions == 0o600
+        } catch {
+            print("log permissions test error: \(error)")
             return false
         }
     }

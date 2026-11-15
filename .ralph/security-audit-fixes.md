@@ -11,7 +11,7 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 - [x] S5 Pipe buffer cap — done: 1 MB cap, 2 MB no-newline test passes.
 - [x] S6 Parser caps — done: icon size/file bounds, bitmap dimension/colour-table caps, `.lnk` 1 MB cap; tests pass.
 - [x] S7 Download caps — done: 2 GB runtime cap with error/retry, 1 MB manifest cap, localized key; typecheck OK.
-- [ ] S8 Log permissions — 0600 files, 0700 folder; test.
+- [x] S8 Log permissions — done: files 0600, folder 0700, logging split to Wine+Logging; test passes.
 
 ## Verification after each item
 - `cd WhiskyKit && swift build`
