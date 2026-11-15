@@ -22,8 +22,8 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 - [x] P1-11 Remove startup volume probes (#906) — done with P0-7: `Bottle.init` no longer touches pin volumes or files; only time a volume is probed is when creating a pin
 - [x] P1-12 Edit-menu/Cmd-A bottle toggle — #1060 — done: Wine query/apply/revert of `HKCU\Software\Wine\Mac Driver\EditMenu`, bottle Config toggle, localized label; typecheck passes
 - [x] P1-13 Blocklist dedupe — #431 — done: selected and single add both skip URLs already in the blocklist; typecheck passes
-- [ ] P1-14 Localization fallback audit — #853
-- [ ] P1-15 CrossOver HTML helper filter — #1215
+- [x] P1-14 Localization fallback audit — #853 — verified: all 124 dotted keys used by the app have an `en` catalog entry, `developmentRegion = en`, and `knownRegions` includes `en`/`Base`; current HEAD no longer has the raw-key gap (old 2.2.3 report)
+- [x] P1-15 CrossOver HTML helper filter — #1215 — done: conservative noise-executable list filters Steam helpers, crash reporters, redistributables and the CrossOver HTML engine from the program list
 
 ## Verification (run after every item)
 - `cd WhiskyKit && swift build`

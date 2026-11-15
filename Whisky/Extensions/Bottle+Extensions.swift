@@ -21,6 +21,37 @@ import AppKit
 import WhiskyKit
 import os.log
 
+/// Helper, crash-reporter and redistributable executables that should not
+/// appear in the user's program list (upstream #1215 and launcher noise).
+private let noiseExecutables: Set<String> = [
+    "steamerrorreporter.exe",
+    "steamerrorreporter64.exe",
+    "steamservice.exe",
+    "steamwebhelper.exe",
+    "steam_monitor.exe",
+    "steamsysinfo.exe",
+    "steamxboxutil.exe",
+    "crashreporter.exe",
+    "crashhandler.exe",
+    "crashpad_handler.exe",
+    "gameoverlayui.exe",
+    "gameoverlayui64.exe",
+    "fossilize-replay.exe",
+    "fossilize-replay64.exe",
+    "gldriverquery.exe",
+    "gldriverquery64.exe",
+    "hardwareupdater.exe",
+    "secure_desktop_capture.exe",
+    "writeminidump.exe",
+    "vc_redist.x86.exe",
+    "vc_redist.x64.exe",
+    "vcredist_x86.exe",
+    "vcredist_x64.exe",
+    "ueprereqsetup_x86.exe",
+    "ueprereqsetup_x64.exe",
+    "crossover html engine.exe"
+]
+
 extension Bottle {
     func openCDrive() {
         NSWorkspace.shared.open(url.appending(path: "drive_c"))
@@ -140,6 +171,7 @@ extension Bottle {
 
                 while let url = enumerator?.nextObject() as? URL {
                     guard !url.hasDirectoryPath && url.pathExtension == "exe" else { continue }
+                    guard !noiseExecutables.contains(url.lastPathComponent.lowercased()) else { continue }
                     guard !blocklist.contains(url) else { continue }
                     foundURLS.insert(url)
                     programs.append(Program(url: url, bottle: bottle,
