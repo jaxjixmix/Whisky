@@ -44,6 +44,8 @@ struct SecuritySelfTest {
 
         let longLineBytes = await streamedNoNewlineBytes()
         check(longLineBytes == 2_000_000, "long lines are chunked and preserved: \(longLineBytes)")
+        check(bitmapRejectsBadDimensions(), "a bitmap with huge/negative dimensions is rejected")
+        check(shortcutSizeCap(), "an oversized shortcut file is rejected")
 
         if failures > 0 {
             print("\(failures) security self-test(s) failed")
@@ -202,5 +204,59 @@ struct SecuritySelfTest {
             }
         }
         return total
+    }
+
+    static func bitmapRejectsBadDimensions() -> Bool {
+        let url = FileManager.default.temporaryDirectory
+            .appending(path: "whisky-bitmap-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            var data = Data()
+            func append<T: FixedWidthInteger>(_ value: T) {
+                var value = value.littleEndian
+                withUnsafeBytes(of: &value) { data.append(contentsOf: $0) }
+            }
+            append(UInt32(40))
+            append(Int32(100_000))
+            append(Int32(-100_000))
+            append(UInt16(1))
+            append(UInt16(32))
+            append(UInt32(0))
+            append(UInt32(0))
+            append(Int32(0))
+            append(Int32(0))
+            append(UInt32(0))
+            append(UInt32(0))
+            try data.write(to: url)
+
+            let handle = try FileHandle(forReadingFrom: url)
+            defer { try? handle.close() }
+            let header = BitmapInfoHeader(handle: handle, offset: 0)
+            return header.renderBitmap(handle: handle, offset: 40) == nil
+        } catch {
+            print("bitmap test error: \(error)")
+            return false
+        }
+    }
+
+    static func shortcutSizeCap() -> Bool {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "whisky-shortcut-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        do {
+            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            let bottle = Bottle(bottleUrl: root)
+            let link = root.appending(path: "huge.lnk")
+            try Data(count: 2_000_000).write(to: link)
+
+            let handle = try FileHandle(forReadingFrom: link)
+            defer { try? handle.close() }
+            return ShellLinkHeader.getProgram(url: link, handle: handle, bottle: bottle) == nil
+        } catch {
+            print("shortcut test error: \(error)")
+            return false
+        }
     }
 }

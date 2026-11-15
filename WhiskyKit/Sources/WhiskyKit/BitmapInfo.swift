@@ -67,16 +67,23 @@ public struct BitmapInfoHeader: Hashable {
     // swiftlint:disable:next cyclomatic_complexity function_body_length
     func renderBitmap(handle: FileHandle, offset: UInt64) -> NSImage? {
         var offset = offset
+        let pixelWidth = Int(width)
+        let pixelHeight = Int(height)
+        guard pixelWidth > 0, pixelWidth <= 1_024,
+              pixelHeight != 0, abs(pixelHeight) <= 1_024 else {
+            return nil
+        }
+
         let colorTable = buildColorTable(offset: &offset, handle: handle)
 
         var pixels: [ColorQuad] = []
 
         // Handle bitfields later if necessary
 
-        for _ in 0..<Int(height / 2) {
+        for _ in 0..<(abs(pixelHeight) / 2) {
             var pixelRow: [ColorQuad] = []
 
-            for _ in 0..<width {
+            for _ in 0..<pixelWidth {
                 switch colorFormat {
                 case .indexed1:
                     // Swift has no data type equivelent to a single bit
@@ -148,6 +155,7 @@ public struct BitmapInfoHeader: Hashable {
     }
 
     func buildColorTable(offset: inout UInt64, handle: FileHandle) -> [ColorQuad] {
+        guard clrUsed <= 256 else { return [] }
         var colorTable: [ColorQuad] = []
 
         for _ in 0..<clrUsed {
@@ -168,6 +176,13 @@ public struct BitmapInfoHeader: Hashable {
     }
 
     func constructImage(pixels: [ColorQuad]) -> NSImage? {
+        let pixelWidth = Int(width)
+        let pixelHeight = Int(height)
+        guard pixelWidth > 0, pixelWidth <= 1_024,
+              pixelHeight != 0, abs(pixelHeight) <= 1_024 else {
+            return nil
+        }
+
         var pixels = pixels
 
         if !pixels.isEmpty {
@@ -176,11 +191,11 @@ public struct BitmapInfoHeader: Hashable {
 
             if let providerRef = CGDataProvider(data: Data(bytes: &pixels,
                                                            count: pixels.count * quadStride) as CFData) {
-                if let cgImg = CGImage(width: Int(width),
-                                       height: Int(height / 2),
+                if let cgImg = CGImage(width: pixelWidth,
+                                       height: abs(pixelHeight) / 2,
                                        bitsPerComponent: 8,
                                        bitsPerPixel: 32,
-                                       bytesPerRow: Int(width) * quadStride,
+                                       bytesPerRow: pixelWidth * quadStride,
                                        space: CGColorSpaceCreateDeviceRGB(),
                                        bitmapInfo: bitmapInfo,
                                        provider: providerRef,

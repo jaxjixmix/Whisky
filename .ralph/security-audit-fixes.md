@@ -9,7 +9,7 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 - [x] S3 Runtime integrity — done: sha256/signature manifest, Ed25519 verifier, release-strict/debug-warn, symlink rejection, tests pass.
 - [x] S4 Shortcut script — done: 0755 and atomic writes (replaces a symlink); typecheck OK.
 - [x] S5 Pipe buffer cap — done: 1 MB cap, 2 MB no-newline test passes.
-- [ ] S6 Parser caps — PE icon bounds, bitmap dimensions/colour table, `.lnk` cap; tests.
+- [x] S6 Parser caps — done: icon size/file bounds, bitmap dimension/colour-table caps, `.lnk` 1 MB cap; tests pass.
 - [ ] S7 Download caps — 2 GB runtime, 1 MB version plist, localized error.
 - [ ] S8 Log permissions — 0600 files, 0700 folder; test.
 

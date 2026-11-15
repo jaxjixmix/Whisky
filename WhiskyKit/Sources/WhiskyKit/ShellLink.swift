@@ -21,6 +21,8 @@ import AppKit
 
 public struct ShellLinkHeader {
     public static func getProgram(url: URL, handle: FileHandle, bottle: Bottle) -> Program? {
+        // Shortcut files are tiny; a malformed one must not be read whole.
+        guard let size = try? handle.seekToEnd(), size <= 1_048_576 else { return nil }
         var offset: UInt64 = 0
         let headerSize = handle.extract(UInt32.self) ?? 0
         // Move past headerSize and linkCLSID
