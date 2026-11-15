@@ -6,7 +6,7 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 ## Checklist
 - [x] S1 Root shell injection in CLI install — done: `quoted form of` + `appleScriptQuoted`; typecheck OK.
 - [x] S2 Program args shell injection — done: args split + ShellQuoting; regression test passes.
-- [ ] S3 Runtime integrity — optional sha256/signature in `WhiskyWineVersion`; verify SHA-256 + Ed25519 (pinned key); strict release / warn debug; reject symlinked runtime; tests.
+- [x] S3 Runtime integrity — done: sha256/signature manifest, Ed25519 verifier, release-strict/debug-warn, symlink rejection, tests pass.
 - [ ] S4 Shortcut script — 0755, atomic write, remove existing symlink.
 - [ ] S5 Pipe buffer cap — 1 MB cap in `PipeLineBuffer`; 2 MB no-newline test.
 - [ ] S6 Parser caps — PE icon bounds, bitmap dimensions/colour table, `.lnk` cap; tests.

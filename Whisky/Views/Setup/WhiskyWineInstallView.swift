@@ -77,7 +77,7 @@ struct WhiskyWineInstallView: View {
         Task.detached {
             let result: Result<Void, Error>
             do {
-                try WhiskyWineInstaller.install(from: tarball)
+                try await WhiskyWineInstaller.install(from: tarball)
                 result = .success(())
             } catch {
                 result = .failure(error)

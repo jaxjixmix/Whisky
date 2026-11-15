@@ -16,6 +16,7 @@
 //  If not, see https://www.gnu.org/licenses/.
 //
 
+import CryptoKit
 import Foundation
 import SemanticVersion
 import os.log
@@ -23,6 +24,10 @@ import os.log
 public enum WhiskyWineInstallError: LocalizedError {
     case tarballMissing
     case invalidArchive
+    case checksumMismatch
+    case invalidSignature
+    case missingIntegrityMetadata
+    case manifestUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -30,6 +35,14 @@ public enum WhiskyWineInstallError: LocalizedError {
             return "The downloaded runtime archive is missing."
         case .invalidArchive:
             return "The downloaded archive does not contain a usable Wine runtime."
+        case .checksumMismatch:
+            return "The downloaded runtime does not match its checksum."
+        case .invalidSignature:
+            return "The runtime manifest signature is invalid."
+        case .missingIntegrityMetadata:
+            return "The runtime manifest is not signed; refusing to install it."
+        case .manifestUnavailable:
+            return "Could not fetch the signed runtime manifest."
         }
     }
 }
@@ -46,6 +59,14 @@ public class WhiskyWineInstaller {
     /// URL to the installed `wine` `bin` directory
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
+    public static let downloadURLString = "https://data.getwhisky.app/Wine/Libraries.tar.gz"
+    public static let versionPlistURLString = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
+    static let maxManifestBytes = 1_048_576
+
+    public static var downloadURL: URL? {
+        URL(string: downloadURLString)
+    }
+
     public static func isWhiskyWineInstalled() -> Bool {
         return isRuntimePresent(inLibraryFolder: libraryFolder)
     }
@@ -53,22 +74,51 @@ public class WhiskyWineInstaller {
     /// Whether `folder` contains both the version record and the `wine64`
     /// binary. A half-extracted runtime must not count as installed.
     static func isRuntimePresent(inLibraryFolder folder: URL) -> Bool {
+        guard isRegularDirectory(folder) else { return false }
+
         let versionPlist = folder
             .appending(path: "WhiskyWineVersion")
             .appendingPathExtension("plist")
-        guard whiskyWineInfo(at: versionPlist) != nil else { return false }
+        guard isRegularFile(versionPlist), whiskyWineInfo(at: versionPlist) != nil else {
+            return false
+        }
 
         let wine64 = folder
             .appending(path: "Wine")
             .appending(path: "bin")
             .appending(path: "wine64")
-        return FileManager.default.fileExists(atPath: wine64.path(percentEncoded: false))
+        return isRegularFile(wine64)
     }
 
-    /// Extract into a staging directory, validate it, then swap it in. A bad
-    /// archive leaves the installed runtime untouched (upstream #1275/#1278).
-    public static func install(from: URL) throws {
-        try install(tarball: from, into: applicationFolder)
+    private static func isRegularFile(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey]) else {
+            return false
+        }
+        return values.isRegularFile == true && values.isSymbolicLink != true
+    }
+
+    private static func isRegularDirectory(_ url: URL) -> Bool {
+        guard let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else {
+            return false
+        }
+        return values.isDirectory == true && values.isSymbolicLink != true
+    }
+
+    /// Fetch the manifest, verify the archive, then install it. Release builds
+    /// require a signed manifest; debug builds warn and continue.
+    public static func install(from tarball: URL) async throws {
+        guard let manifest = await fetchRemoteVersion() else {
+            #if DEBUG
+            Logger.wineKit.warning("Runtime manifest unavailable; installing without integrity metadata")
+            try install(tarball: tarball, into: applicationFolder)
+            return
+            #else
+            throw WhiskyWineInstallError.manifestUnavailable
+            #endif
+        }
+
+        try verify(tarball: tarball, manifest: manifest)
+        try install(tarball: tarball, into: applicationFolder)
     }
 
     static func install(tarball: URL, into destination: URL) throws {
@@ -121,45 +171,119 @@ public class WhiskyWineInstaller {
     }
 
     public static func shouldUpdateWhiskyWine() async -> (Bool, SemanticVersion) {
-        let versionPlistURL = "https://data.getwhisky.app/Wine/WhiskyWineVersion.plist"
-        let localVersion = whiskyWineVersion()
+        guard let localVersion = whiskyWineVersion(),
+              let remote = await fetchRemoteVersion() else {
+            return (false, SemanticVersion(0, 0, 0))
+        }
 
-        var remoteVersion: SemanticVersion?
+        #if !DEBUG
+        // Do not offer an update the installer would refuse.
+        guard remote.sha256 != nil, remote.signature != nil else {
+            Logger.wineKit.warning("Ignoring an unsigned WhiskyWine manifest in a release build")
+            return (false, SemanticVersion(0, 0, 0))
+        }
+        #endif
 
-        if let remoteUrl = URL(string: versionPlistURL) {
-            remoteVersion = await withCheckedContinuation { continuation in
-                var request = URLRequest(url: remoteUrl)
-                // A stalled version check must not leave the update task hanging.
-                request.timeoutInterval = 15
-                URLSession(configuration: .ephemeral).dataTask(with: request) { data, _, error in
-                    do {
-                        if error == nil, let data = data {
-                            let decoder = PropertyListDecoder()
-                            let remoteInfo = try decoder.decode(WhiskyWineVersion.self, from: data)
-                            let remoteVersion = remoteInfo.version
+        guard localVersion < remote.version else {
+            return (false, SemanticVersion(0, 0, 0))
+        }
+        return (true, remote.version)
+    }
 
-                            continuation.resume(returning: remoteVersion)
-                            return
-                        }
-                        if let error = error {
-                            print(error)
-                        }
-                    } catch {
-                        print(error)
-                    }
+    /// SHA-256 of a file, streamed so a large archive is never loaded whole.
+    static func sha256(ofFileAt url: URL) -> String? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
 
+        var hasher = SHA256()
+        do {
+            while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
+                hasher.update(data: chunk)
+            }
+        } catch {
+            Logger.wineKit.error("Failed to hash runtime archive: \(error, privacy: .public)")
+            return nil
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Verify a base64 Ed25519 signature over `payload`.
+    static func verifySignature(
+        base64 signature: String,
+        payload: Data,
+        publicKeyBase64: String? = nil
+    ) -> Bool {
+        guard let keyString = publicKeyBase64 ?? runtimePublicKeyBase64,
+              let keyData = Data(base64Encoded: keyString),
+              let signatureData = Data(base64Encoded: signature),
+              let publicKey = try? Curve25519.Signing.PublicKey(rawRepresentation: keyData) else {
+            return false
+        }
+        return publicKey.isValidSignature(signatureData, for: payload)
+    }
+
+    /// The app's pinned manifest key, with the Sparkle key as the default.
+    static var runtimePublicKeyBase64: String? {
+        Bundle.main.object(forInfoDictionaryKey: "WhiskyRuntimePublicKey") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String
+    }
+
+    /// Verify the archive hash and, when present, the manifest signature.
+    static func verify(tarball: URL, manifest: WhiskyWineVersion) throws {
+        guard let expected = manifest.sha256?.lowercased(), !expected.isEmpty else {
+            try requireIntegrity("WhiskyWine manifest has no sha256")
+            return
+        }
+        guard let actual = sha256(ofFileAt: tarball), actual == expected else {
+            throw WhiskyWineInstallError.checksumMismatch
+        }
+
+        guard let signature = manifest.signature, !signature.isEmpty else {
+            try requireIntegrity("WhiskyWine manifest has no signature")
+            return
+        }
+        guard verifySignature(base64: signature, payload: Data(manifest.signingPayload.utf8)) else {
+            throw WhiskyWineInstallError.invalidSignature
+        }
+    }
+
+    /// Debug builds warn when integrity metadata is missing; release builds
+    /// refuse to install an unsigned runtime.
+    private static func requireIntegrity(_ message: String) throws {
+        #if DEBUG
+        Logger.wineKit.warning("\(message, privacy: .public)")
+        #else
+        throw WhiskyWineInstallError.missingIntegrityMetadata
+        #endif
+    }
+
+    /// Fetch and decode the remote version manifest, bounded to 1 MB.
+    static func fetchRemoteVersion() async -> WhiskyWineVersion? {
+        guard let url = URL(string: versionPlistURLString) else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15
+
+        return await withCheckedContinuation { continuation in
+            URLSession(configuration: .ephemeral).dataTask(with: request) { data, response, error in
+                guard error == nil,
+                      let http = response as? HTTPURLResponse,
+                      (200...299).contains(http.statusCode),
+                      let data,
+                      data.count <= maxManifestBytes else {
                     continuation.resume(returning: nil)
-                }.resume()
-            }
+                    return
+                }
+                do {
+                    let info = try PropertyListDecoder().decode(WhiskyWineVersion.self, from: data)
+                    continuation.resume(returning: info)
+                } catch {
+                    Logger.wineKit.warning(
+                        "Failed to decode the WhiskyWine manifest: \(error, privacy: .public)"
+                    )
+                    continuation.resume(returning: nil)
+                }
+            }.resume()
         }
-
-        if let localVersion = localVersion, let remoteVersion = remoteVersion {
-            if localVersion < remoteVersion {
-                return (true, remoteVersion)
-            }
-        }
-
-        return (false, SemanticVersion(0, 0, 0))
     }
 
     public static func whiskyWineVersion() -> SemanticVersion? {
@@ -189,4 +313,11 @@ public class WhiskyWineInstaller {
 
 struct WhiskyWineVersion: Codable {
     var version: SemanticVersion = SemanticVersion(1, 0, 0)
+    var sha256: String?
+    var signature: String?
+
+    /// Canonical payload the release pipeline signs.
+    var signingPayload: String {
+        "WhiskyWine|\(version)|\(sha256 ?? "")|\(WhiskyWineInstaller.downloadURLString)"
+    }
 }

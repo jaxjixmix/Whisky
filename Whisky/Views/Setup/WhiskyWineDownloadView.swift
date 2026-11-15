@@ -131,7 +131,7 @@ struct WhiskyWineDownloadView: View {
         totalBytes = 0
         downloadSpeed = 0
 
-        guard let url = URL(string: "https://data.getwhisky.app/Wine/Libraries.tar.gz") else {
+        guard let url = WhiskyWineInstaller.downloadURL else {
             downloadError = String(localized: "setup.whiskywine.download.failed")
             return
         }
