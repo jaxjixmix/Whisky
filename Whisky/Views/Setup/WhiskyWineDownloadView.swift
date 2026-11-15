@@ -137,35 +137,39 @@ struct WhiskyWineDownloadView: View {
         }
 
         let task = Self.session.downloadTask(with: url) { fileURL, response, error in
-            Task { @MainActor in
-                self.observation?.invalidate()
-                self.observation = nil
+            // URLSession deletes the completion-handler file when this closure
+            // returns, so move it to a stable path synchronously.
+            var stableURL: URL?
+            var failure: String?
 
-                if let error {
-                    if (error as NSError).code != NSURLErrorCancelled {
-                        self.downloadError = error.localizedDescription
-                    }
-                    return
+            if let error {
+                if (error as NSError).code != NSURLErrorCancelled {
+                    failure = error.localizedDescription
                 }
-                if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                    self.downloadError = "HTTP \(http.statusCode)"
-                    return
-                }
-                guard let fileURL else {
-                    self.downloadError = String(localized: "setup.whiskywine.download.failed")
-                    return
-                }
-
-                // The completion-handler file is removed when this closure
-                // returns; the installer needs a stable path.
+            } else if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                failure = "HTTP \(http.statusCode)"
+            } else if let fileURL {
                 let destination = FileManager.default.temporaryDirectory
                     .appending(path: "WhiskyWine-\(UUID().uuidString).tar.gz")
                 do {
                     try FileManager.default.moveItem(at: fileURL, to: destination)
-                    self.tarLocation = destination
-                    self.proceed()
+                    stableURL = destination
                 } catch {
-                    self.downloadError = error.localizedDescription
+                    failure = error.localizedDescription
+                }
+            } else {
+                failure = String(localized: "setup.whiskywine.download.failed")
+            }
+
+            Task { @MainActor in
+                self.observation?.invalidate()
+                self.observation = nil
+
+                if let failure {
+                    self.downloadError = failure
+                } else if let stableURL {
+                    self.tarLocation = stableURL
+                    self.proceed()
                 }
             }
         }

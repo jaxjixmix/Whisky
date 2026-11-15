@@ -264,6 +264,7 @@ public class Wine {
                 "wineserver -k timed out for '\(bottle.settings.name, privacy: .public)'"
             )
             process.terminate()
+            process.waitUntilExit()
             return false
         }
         return process.terminationStatus == 0

@@ -84,7 +84,8 @@ public struct BottleData: Codable {
 
     @discardableResult
     private mutating func decode() -> Bool {
-        guard FileManager.default.fileExists(atPath: entriesFile.path(percentEncoded: false)) else {
+        let registryPath = entriesFile.path(percentEncoded: false)
+        guard FileManager.default.fileExists(atPath: registryPath) else {
             // First run: `init` writes an empty registry.
             return false
         }
@@ -93,7 +94,7 @@ public struct BottleData: Codable {
             // The file exists but cannot be read. Rewriting it here would
             // destroy a registry we could not understand.
             Logger.wineKit.error(
-                "Failed to read bottle registry at \\(entriesFile.path(percentEncoded: false), privacy: .public); leaving it untouched"
+                "Failed to read bottle registry at \(registryPath, privacy: .public); leaving it untouched"
             )
             return true
         }
@@ -104,9 +105,10 @@ public struct BottleData: Codable {
             self = decoded
             self.entriesFile = fileURL
 
-            if fileVersion != Self.currentVersion {
+            let loadedVersion = fileVersion
+            if loadedVersion != Self.currentVersion {
                 Logger.wineKit.warning(
-                    "Bottle registry version \\(fileVersion, privacy: .public); rewriting as \\(Self.currentVersion, privacy: .public)"
+                    "Bottle registry version \(loadedVersion, privacy: .public); rewriting as \(Self.currentVersion, privacy: .public)"
                 )
                 // Keep the registered paths and let `init` re-encode the
                 // current format instead of discarding the list.
@@ -117,7 +119,7 @@ public struct BottleData: Codable {
         } catch {
             let backup = Self.backUpCorruptRegistry(at: entriesFile)
             Logger.wineKit.error(
-                "Failed to decode bottle registry: \\(error, privacy: .public); backed up to \\(backup?.path(percentEncoded: false) ?? \"(failed)\", privacy: .public)"
+                "Failed to decode bottle registry: \(error, privacy: .public); backed up to \(backup?.path(percentEncoded: false) ?? "(failed)", privacy: .public)"
             )
             return false
         }
@@ -138,7 +140,7 @@ public struct BottleData: Codable {
             return true
         } catch {
             Logger.wineKit.error(
-                "Failed to write bottle registry at \\(entriesFile.path(percentEncoded: false), privacy: .public): \\(error, privacy: .public)"
+                "Failed to write bottle registry at \(entriesFile.path(percentEncoded: false), privacy: .public): \(error, privacy: .public)"
             )
             return false
         }
@@ -147,14 +149,14 @@ public struct BottleData: Codable {
     /// Move an unreadable registry aside before a fresh one is written.
     private static func backUpCorruptRegistry(at file: URL) -> URL? {
         let backup = file.deletingLastPathComponent()
-            .appending(path: "\\(file.deletingPathExtension().lastPathComponent).corrupt-\\(Int(Date.now.timeIntervalSince1970))-\\(UUID().uuidString.prefix(8))")
+            .appending(path: "\(file.deletingPathExtension().lastPathComponent).corrupt-\(Int(Date.now.timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
             .appendingPathExtension("plist")
         do {
             try FileManager.default.moveItem(at: file, to: backup)
             return backup
         } catch {
             Logger.wineKit.error(
-                "Failed to back up corrupt bottle registry: \\(error, privacy: .public)"
+                "Failed to back up corrupt bottle registry: \(error, privacy: .public)"
             )
             return nil
         }

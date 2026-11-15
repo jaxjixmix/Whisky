@@ -61,7 +61,7 @@ extension Bottle {
         let whiskyCmdURL = Bundle.main.url(forResource: "WhiskyCmd", withExtension: nil)
         if let whiskyCmdURL = whiskyCmdURL {
             let whiskyCmd = whiskyCmdURL.path(percentEncoded: false)
-            let cmd = "eval \"$(\"\(ShellQuoting.quoted(whiskyCmd))\" shellenv \"\(ShellQuoting.quoted(settings.name))\")\""
+            let cmd = "eval \"$(\(ShellQuoting.quoted(whiskyCmd)) shellenv \(ShellQuoting.quoted(settings.name)))\""
 
             let script = """
             tell application "Terminal"
@@ -194,36 +194,56 @@ extension Bottle {
 
     @MainActor
     func move(destination: URL) {
+        let oldBottleURL = url
+        let movedBottle = BottleVM.shared.bottles.first(where: { $0.url == oldBottleURL })
+        let originalPins = movedBottle?.settings.pins
+        let originalBlocklist = movedBottle?.settings.blocklist
+        let originalShortcuts = movedBottle?.settings.importedShortcuts
+
         do {
-            if let bottle = BottleVM.shared.bottles.first(where: { $0.url == url }) {
+            if let bottle = movedBottle {
                 bottle.inFlight = true
                 for index in 0..<bottle.settings.pins.count {
                     let pin = bottle.settings.pins[index]
-                    if let url = pin.url {
-                        bottle.settings.pins[index].url = url.updateParentBottle(old: url,
-                                                                                 new: destination)
+                    if let pinURL = pin.url {
+                        bottle.settings.pins[index].url = pinURL.updateParentBottle(old: oldBottleURL,
+                                                                                    new: destination)
                     }
                 }
 
                 for index in 0..<bottle.settings.blocklist.count {
                     let blockedUrl = bottle.settings.blocklist[index]
-                    bottle.settings.blocklist[index] = blockedUrl.updateParentBottle(old: url,
+                    bottle.settings.blocklist[index] = blockedUrl.updateParentBottle(old: oldBottleURL,
                                                                                      new: destination)
                 }
 
                 for index in 0..<bottle.settings.importedShortcuts.count {
                     let shortcut = bottle.settings.importedShortcuts[index]
-                    bottle.settings.importedShortcuts[index] = shortcut.updateParentBottle(old: url,
-                                                                                          new: destination)
+                    bottle.settings.importedShortcuts[index] = shortcut.updateParentBottle(
+                        old: oldBottleURL, new: destination
+                    )
                 }
             }
-            try FileManager.default.moveItem(at: url, to: destination)
-            if let path = BottleVM.shared.bottlesList.paths.firstIndex(of: url) {
+            try FileManager.default.moveItem(at: oldBottleURL, to: destination)
+            if let path = BottleVM.shared.bottlesList.paths.firstIndex(of: oldBottleURL) {
                 BottleVM.shared.bottlesList.paths[path] = destination
             }
             BottleVM.shared.loadBottles()
         } catch {
-            print("Failed to move bottle")
+            // The directory did not move: put the rewritten paths back so the
+            // bottle's settings still point inside the old location.
+            if let bottle = movedBottle {
+                if let originalPins {
+                    bottle.settings.pins = originalPins
+                }
+                if let originalBlocklist {
+                    bottle.settings.blocklist = originalBlocklist
+                }
+                if let originalShortcuts {
+                    bottle.settings.importedShortcuts = originalShortcuts
+                }
+            }
+            print("Failed to move bottle: \(error)")
         }
     }
 

@@ -92,7 +92,8 @@ struct WhiskyWineInstallView: View {
                         proceed()
                     }
                 case .failure(let error):
-                    installError = error.localizedDescription
+                    installError = (error as? LocalizedError)?.errorDescription
+                        ?? String(describing: error)
                 }
             }
         }
