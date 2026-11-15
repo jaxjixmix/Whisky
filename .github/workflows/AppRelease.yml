@@ -24,6 +24,11 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Run WhiskyKit tests
+        run: |
+          swift build --package-path WhiskyKit
+          swift test --package-path WhiskyKit
+
       - name: Build
         run: |
           xcodebuild -project Whisky.xcodeproj \
@@ -70,6 +75,11 @@ jobs:
           hdiutil create -volname "Whisky" -srcfolder build/dmg -ov -format UDZO Whisky.dmg
           hdiutil verify Whisky.dmg
 
+      - name: Write checksums
+        run: |
+          shasum -a 256 Whisky.dmg | tee Whisky.dmg.sha256
+          shasum -a 256 Whisky.zip | tee Whisky.zip.sha256
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -77,3 +87,5 @@ jobs:
           path: |
             Whisky.zip
             Whisky.dmg
+            Whisky.zip.sha256
+            Whisky.dmg.sha256
