@@ -26,6 +26,9 @@ jobs:
           swift run -Xswiftc -enable-testing WhiskyKitSelfTest
           swift run -Xswiftc -enable-testing WhiskyKitSecuritySelfTest
 
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
       - name: Build app
         run: |
           xcodebuild -project Whisky.xcodeproj -scheme Whisky \
