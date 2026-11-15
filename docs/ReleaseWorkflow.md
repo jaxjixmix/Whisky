@@ -9,6 +9,28 @@ The fork uses two parallel artifact streams:
 
 Both live on GitHub Releases. Static metadata (version plist, Sparkle appcast) is served from GitHub Pages, which is **workflow-deployed** through `.github/workflows/Documentation.yml`. The `gh-pages` branch is unused; static files go in `dist/pages/`.
 
+## Current state (3.9.4)
+
+- `app-v3.9.4` is an **ad-hoc signed, non-notarized** DMG; `spctl` rejects it.
+- `dist/pages/appcast.xml` is **empty**, so Sparkle offers no updates.
+- `SUPublicEDKey` is still the upstream fork's key; this fork has not generated
+  its own Sparkle key or private key yet.
+- The live runtime `v3.1.1` matches its published SHA-256, but
+  `WhiskyWineVersion.plist` has **no Ed25519 signature**; 3.9.4 verifies the
+  SHA-256 only.
+- The live release line is `jaxjixmix/tilefish` (3.9.x). `main` is a separate
+  upstream-based branch and its release-prep work does not apply to this line.
+- Run `scripts/release-preflight.sh` before building.
+
+To unblock the release:
+
+1. On the Developer ID machine, generate this fork's Sparkle key with
+   `generate_keys`, replace `SUPublicEDKey`, and back up the private key.
+2. Bump the version, run `scripts/release.sh X.Y.Z`, and sign the DMG with
+   `sign_update`.
+3. Add the appcast item, publish, and rerun the preflight.
+
+
 ## One-time setup
 
 These only need to be done once per maintainer machine.
