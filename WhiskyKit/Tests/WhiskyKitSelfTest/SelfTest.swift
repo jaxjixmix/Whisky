@@ -16,13 +16,12 @@
 //  If not, see https://www.gnu.org/licenses/.
 //
 
-// swiftlint:disable file_length type_body_length
-
 import Foundation
 import SemanticVersion
 @testable import WhiskyKit
 
 @main
+// swiftlint:disable:next type_body_length
 struct SelfTest {
     static func main() async {
         var failures = 0

@@ -25,7 +25,7 @@ public class Wine {
     /// Path to the `wine64` binary
     public static let wineBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wine64")
     /// Parth to the `wineserver` binary
-    private static let wineserverBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wineserver")
+    static let wineserverBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wineserver")
 
     /// Run a process on a executable file given by the `executableURL`
     private static func runProcess(
@@ -140,30 +140,6 @@ public class Wine {
         return wineCmd
     }
 
-    public static func generateTerminalEnvironmentCommand(bottle: Bottle) -> String {
-        var cmd = """
-        export PATH=\(ShellQuoting.quoted(WhiskyWineInstaller.binFolder.path)):\"$PATH\"
-        export WINE=\"wine64\"
-        alias wine=\"wine64\"
-        alias winecfg=\"wine64 winecfg\"
-        alias msiexec=\"wine64 msiexec\"
-        alias regedit=\"wine64 regedit\"
-        alias regsvr32=\"wine64 regsvr32\"
-        alias wineboot=\"wine64 wineboot\"
-        alias wineconsole=\"wine64 wineconsole\"
-        alias winedbg=\"wine64 winedbg\"
-        alias winefile=\"wine64 winefile\"
-        alias winepath=\"wine64 winepath\"
-        """
-
-        let env = constructWineEnvironment(for: bottle, environment: constructWineEnvironment(for: bottle))
-        for (key, value) in env where ShellQuoting.isValidEnvironmentKey(key) {
-            cmd += "\nexport \(ShellQuoting.assignment(key, value))"
-        }
-
-        return cmd
-    }
-
     /// Run a `wineserver` command with the given arguments and return the output result
     private static func runWineserver(_ args: [String], bottle: Bottle) async throws -> String {
         var result: [ProcessOutput] = []
@@ -231,45 +207,6 @@ public class Wine {
         }
     }
 
-    /// Run `wineserver -k` and wait for it, so quitting the app cannot return
-    /// before the bottle's processes have been asked to close.
-    ///
-    /// - Returns: `true` when `wineserver` exited successfully within `timeout`.
-    @discardableResult
-    public static func killBottleAndWait(bottle: Bottle, timeout: TimeInterval = 5) -> Bool {
-        let process = Process()
-        process.executableURL = wineserverBinary
-        process.arguments = ["-k"]
-        process.currentDirectoryURL = wineserverBinary.deletingLastPathComponent()
-        process.environment = constructWineServerEnvironment(for: bottle)
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        do {
-            try process.run()
-        } catch {
-            Logger.wineKit.error(
-                "Failed to start wineserver for '\(bottle.settings.name, privacy: .public)': \(error, privacy: .public)"
-            )
-            return false
-        }
-
-        let deadline = Date().addingTimeInterval(timeout)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-
-        if process.isRunning {
-            Logger.wineKit.warning(
-                "wineserver -k timed out for '\(bottle.settings.name, privacy: .public)'"
-            )
-            process.terminate()
-            process.waitUntilExit()
-            return false
-        }
-        return process.terminationStatus == 0
-    }
-
     public static func enableDXVK(bottle: Bottle) throws {
         try FileManager.default.replaceDLLs(
             in: bottle.url.appending(path: "drive_c").appending(path: "windows").appending(path: "system32"),
@@ -282,7 +219,7 @@ public class Wine {
     }
 
     /// Construct an environment merging the bottle values with the given values
-    private static func constructWineEnvironment(
+    static func constructWineEnvironment(
         for bottle: Bottle, environment: [String: String] = [:]
     ) -> [String: String] {
         var result: [String: String] = [
@@ -297,7 +234,7 @@ public class Wine {
     }
 
     /// Construct an environment merging the bottle values with the given values
-    private static func constructWineServerEnvironment(
+    static func constructWineServerEnvironment(
         for bottle: Bottle, environment: [String: String] = [:]
     ) -> [String: String] {
         var result: [String: String] = [
@@ -343,13 +280,13 @@ extension Wine {
 }
 
 extension Wine {
-    private enum RegistryKey: String {
+    enum RegistryKey: String {
         case currentVersion = #"HKLM\Software\Microsoft\Windows NT\CurrentVersion"#
         case macDriver = #"HKCU\Software\Wine\Mac Driver"#
         case desktop = #"HKCU\Control Panel\Desktop"#
     }
 
-    private static func addRegistryKey(
+    static func addRegistryKey(
         bottle: Bottle, key: String, name: String, data: String, type: RegistryType
     ) async throws {
         try await runWine(
@@ -415,35 +352,6 @@ extension Wine {
             bottle: bottle, key: RegistryKey.macDriver.rawValue, name: "RetinaMode", data: retinaMode ? "y" : "n",
             type: .string
         )
-    }
-
-    /// Whether Wine's mac-driver Edit menu (Cmd-A/C/V mapped to Windows
-    /// select-all/copy/paste) is enabled. Wine enables it when the empty
-    /// `EditMenu` value is absent.
-    public static func isEditMenuEnabled(bottle: Bottle) async throws -> Bool {
-        let output = try await runWine(
-            ["reg", "query", RegistryKey.macDriver.rawValue, "-v", "EditMenu"],
-            bottle: bottle
-        )
-        let hasEmptyEditMenu = output
-            .split(whereSeparator: \.isNewline)
-            .contains { $0.trimmingCharacters(in: .whitespaces).hasPrefix("EditMenu") }
-        return !hasEmptyEditMenu
-    }
-
-    public static func changeEditMenu(bottle: Bottle, enabled: Bool) async throws {
-        if enabled {
-            // Wine's default is enabled; remove the suppressing empty value.
-            try await runWine(
-                ["reg", "delete", RegistryKey.macDriver.rawValue, "-v", "EditMenu", "-f"],
-                bottle: bottle
-            )
-        } else {
-            try await addRegistryKey(
-                bottle: bottle, key: RegistryKey.macDriver.rawValue,
-                name: "EditMenu", data: "", type: .string
-            )
-        }
     }
 
     public static func dpiResolution(bottle: Bottle) async throws -> Int? {
