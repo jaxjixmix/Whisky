@@ -28,16 +28,17 @@ Fix the app-side P0/P1 findings from the upstream issue triage. No game/launcher
 ## Verification (run after every item)
 - `cd WhiskyKit && swift build`
 - `cd WhiskyKit && swift run -Xswiftc -enable-testing WhiskyKitSelfTest` (XCTest is unavailable in CLT)
-- `/tmp/typecheck-whisky.sh` (app Swift sources, Sparkle stub)
+- `./scripts/typecheck-app.sh` (app sources, stubbed Sparkle, no Xcode required)
 - Commit each verified item separately.
 
 ## Final Verification
 
-- Exact command: `cd /Users/mojics/orca/workspaces/whisky/Thigns-to-deliver/WhiskyKit && swift build && swift run -Xswiftc -enable-testing WhiskyKitSelfTest`
-- App target: `/tmp/typecheck-whisky.sh` (Sparkle stub; no Xcode installed)
+- Exact command: `cd /Users/mojics/orca/workspaces/whisky/Thigns-to-deliver/WhiskyKit && swift build && swift run -Xswiftc -enable-testing WhiskyKitSelfTest && cd .. && ./scripts/typecheck-app.sh`
+- App target: `./scripts/typecheck-app.sh` (stubbed Sparkle; no Xcode installed)
 - Catalog: `python3 -c "import json; json.load(open('Whisky/Localizable.xcstrings'))"`
 - Result: WhiskyKit builds; 12 self-tests pass; app sources typecheck; catalog JSON valid; `git diff --check` clean.
 - Note: the app target was **not** built or run (Xcode is unavailable in this environment). Typecheck is the gate for app-only changes.
+- Preserved artifacts: `WhiskyKit/.build/` and `scripts/typecheck-app.sh`; the script recreates its own temp stub/stripped sources.
 
 ## Rules
 - Smallest complete change, existing patterns, no new dependencies.
