@@ -179,9 +179,9 @@ public class WhiskyWineInstaller {
             let info = try decoder.decode(WhiskyWineVersion.self, from: data)
             return info
         } catch {
-            Logger.wineKit.error(
-                "Failed to read WhiskyWine version at \(versionPlist.path(percentEncoded: false), privacy: .public): \(error, privacy: .public)"
-            )
+            let path = versionPlist.path(percentEncoded: false)
+            let message = "Failed to read WhiskyWine version at \(path): \(error)"
+            Logger.wineKit.error("\(message, privacy: .public)")
             return nil
         }
     }

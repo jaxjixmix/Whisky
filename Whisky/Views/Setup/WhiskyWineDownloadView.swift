@@ -137,29 +137,9 @@ struct WhiskyWineDownloadView: View {
         }
 
         let task = Self.session.downloadTask(with: url) { fileURL, response, error in
-            // URLSession deletes the completion-handler file when this closure
-            // returns, so move it to a stable path synchronously.
-            var stableURL: URL?
-            var failure: String?
-
-            if let error {
-                if (error as NSError).code != NSURLErrorCancelled {
-                    failure = error.localizedDescription
-                }
-            } else if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                failure = "HTTP \(http.statusCode)"
-            } else if let fileURL {
-                let destination = FileManager.default.temporaryDirectory
-                    .appending(path: "WhiskyWine-\(UUID().uuidString).tar.gz")
-                do {
-                    try FileManager.default.moveItem(at: fileURL, to: destination)
-                    stableURL = destination
-                } catch {
-                    failure = error.localizedDescription
-                }
-            } else {
-                failure = String(localized: "setup.whiskywine.download.failed")
-            }
+            let (stableURL, failure) = Self.stableDownload(
+                fileURL: fileURL, response: response, error: error
+            )
 
             Task { @MainActor in
                 self.observation?.invalidate()
@@ -197,6 +177,34 @@ struct WhiskyWineDownloadView: View {
         downloadTask = task
         startTime = Date()
         task.resume()
+    }
+
+    /// URLSession deletes the completion-handler file when the closure
+    /// returns, so move it to a stable path synchronously.
+    private static func stableDownload(
+        fileURL: URL?, response: URLResponse?, error: Error?
+    ) -> (url: URL?, failure: String?) {
+        if let error {
+            guard (error as NSError).code != NSURLErrorCancelled else {
+                return (nil, nil)
+            }
+            return (nil, error.localizedDescription)
+        }
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            return (nil, "HTTP \(http.statusCode)")
+        }
+        guard let fileURL else {
+            return (nil, String(localized: "setup.whiskywine.download.failed"))
+        }
+
+        let destination = FileManager.default.temporaryDirectory
+            .appending(path: "WhiskyWine-\(UUID().uuidString).tar.gz")
+        do {
+            try FileManager.default.moveItem(at: fileURL, to: destination)
+            return (destination, nil)
+        } catch {
+            return (nil, error.localizedDescription)
+        }
     }
 
     func formatBytes(bytes: Int64) -> String {

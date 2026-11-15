@@ -86,49 +86,11 @@ extension Bottle {
 
     @discardableResult
     func getStartMenuPrograms() -> [Program] {
-        let globalStartMenu = url
-            .appending(path: "drive_c")
-            .appending(path: "ProgramData")
-            .appending(path: "Microsoft")
-            .appending(path: "Windows")
-            .appending(path: "Start Menu")
-
-        let userStartMenu = url
-            .appending(path: "drive_c")
-            .appending(path: "users")
-            .appending(path: "crossover")
-            .appending(path: "AppData")
-            .appending(path: "Roaming")
-            .appending(path: "Microsoft")
-            .appending(path: "Windows")
-            .appending(path: "Start Menu")
-
         var startMenuPrograms: [Program] = []
-        var linkURLs: [URL] = []
-        let globalEnumerator = FileManager.default.enumerator(at: globalStartMenu,
-                                                              includingPropertiesForKeys: [.isRegularFileKey],
-                                                              options: [.skipsHiddenFiles])
-        while let url = globalEnumerator?.nextObject() as? URL {
-            if url.pathExtension == "lnk" {
-                linkURLs.append(url)
-            }
-        }
-
-        let userEnumerator = FileManager.default.enumerator(at: userStartMenu,
-                                                            includingPropertiesForKeys: [.isRegularFileKey],
-                                                            options: [.skipsHiddenFiles])
-        while let url = userEnumerator?.nextObject() as? URL {
-            if url.pathExtension == "lnk" {
-                linkURLs.append(url)
-            }
-        }
-
-        linkURLs.sort(by: { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() })
-
         let alreadyImported = Set(settings.importedShortcuts)
         var newlyImported: [URL] = []
 
-        for link in linkURLs where !alreadyImported.contains(link) {
+        for link in startMenuLinkURLs() where !alreadyImported.contains(link) {
             do {
                 if let program = ShellLinkHeader.getProgram(url: link,
                                                             handle: try FileHandle(forReadingFrom: link),
@@ -152,6 +114,28 @@ extension Bottle {
         return startMenuPrograms
     }
 
+    /// Both Start Menu trees, sorted by shortcut name.
+    private func startMenuLinkURLs() -> [URL] {
+        let menus = [
+            url.appending(path: "drive_c/ProgramData/Microsoft/Windows/Start Menu"),
+            url.appending(path: "drive_c/users/crossover/AppData/Roaming/Microsoft/Windows/Start Menu")
+        ]
+        var linkURLs: [URL] = []
+
+        for menu in menus {
+            let enumerator = FileManager.default.enumerator(
+                at: menu, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
+            )
+            while let item = enumerator?.nextObject() as? URL {
+                if item.pathExtension == "lnk" {
+                    linkURLs.append(item)
+                }
+            }
+        }
+
+        return linkURLs.sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
+    }
+
     @MainActor
     func updateInstalledPrograms() async {
         let driveC = url.appending(path: "drive_c")
@@ -159,37 +143,46 @@ extension Bottle {
         let pins = settings.pins
         let bottle = self
 
-        let programs = await Task.detached(priority: .userInitiated) { () -> [Program] in
-            var programs: [Program] = []
-            var foundURLS: Set<URL> = []
-
-            for folderName in ["Program Files", "Program Files (x86)"] {
-                let folderURL = driveC.appending(path: folderName)
-                let enumerator = FileManager.default.enumerator(
-                    at: folderURL, includingPropertiesForKeys: [.isExecutableKey], options: [.skipsHiddenFiles]
-                )
-
-                while let url = enumerator?.nextObject() as? URL {
-                    guard !url.hasDirectoryPath && url.pathExtension == "exe" else { continue }
-                    guard !noiseExecutables.contains(url.lastPathComponent.lowercased()) else { continue }
-                    guard !blocklist.contains(url) else { continue }
-                    foundURLS.insert(url)
-                    programs.append(Program(url: url, bottle: bottle,
-                                            pinned: pins.contains(where: { $0.url == url })))
-                }
-            }
-
-            // Add missing programs from pins
-            for pin in pins {
-                guard let url = pin.url else { continue }
-                guard !foundURLS.contains(url) else { continue }
-                programs.append(Program(url: url, bottle: bottle, pinned: true))
-            }
-
-            return programs.sorted { $0.name.lowercased() < $1.name.lowercased() }
+        let programs = await Task.detached(priority: .userInitiated) {
+            Self.scanInstalledPrograms(driveC: driveC, blocklist: blocklist, pins: pins, bottle: bottle)
         }.value
 
         self.programs = programs
+    }
+
+    /// Filesystem walk and PE/settings parsing; safe to run off the main actor.
+    private static func scanInstalledPrograms(
+        driveC: URL,
+        blocklist: [URL],
+        pins: [PinnedProgram],
+        bottle: Bottle
+    ) -> [Program] {
+        var programs: [Program] = []
+        var foundURLs: Set<URL> = []
+
+        for folderName in ["Program Files", "Program Files (x86)"] {
+            let folderURL = driveC.appending(path: folderName)
+            let enumerator = FileManager.default.enumerator(
+                at: folderURL, includingPropertiesForKeys: [.isExecutableKey], options: [.skipsHiddenFiles]
+            )
+
+            while let url = enumerator?.nextObject() as? URL {
+                guard !url.hasDirectoryPath && url.pathExtension == "exe" else { continue }
+                guard !noiseExecutables.contains(url.lastPathComponent.lowercased()) else { continue }
+                guard !blocklist.contains(url) else { continue }
+                foundURLs.insert(url)
+                programs.append(Program(url: url, bottle: bottle,
+                                        pinned: pins.contains(where: { $0.url == url })))
+            }
+        }
+
+        // Add missing programs from pins.
+        for pin in pins {
+            guard let url = pin.url, !foundURLs.contains(url) else { continue }
+            programs.append(Program(url: url, bottle: bottle, pinned: true))
+        }
+
+        return programs.sorted { $0.name.lowercased() < $1.name.lowercased() }
     }
 
     @MainActor
@@ -203,26 +196,7 @@ extension Bottle {
         do {
             if let bottle = movedBottle {
                 bottle.inFlight = true
-                for index in 0..<bottle.settings.pins.count {
-                    let pin = bottle.settings.pins[index]
-                    if let pinURL = pin.url {
-                        bottle.settings.pins[index].url = pinURL.updateParentBottle(old: oldBottleURL,
-                                                                                    new: destination)
-                    }
-                }
-
-                for index in 0..<bottle.settings.blocklist.count {
-                    let blockedUrl = bottle.settings.blocklist[index]
-                    bottle.settings.blocklist[index] = blockedUrl.updateParentBottle(old: oldBottleURL,
-                                                                                     new: destination)
-                }
-
-                for index in 0..<bottle.settings.importedShortcuts.count {
-                    let shortcut = bottle.settings.importedShortcuts[index]
-                    bottle.settings.importedShortcuts[index] = shortcut.updateParentBottle(
-                        old: oldBottleURL, new: destination
-                    )
-                }
+                rewriteMovedPaths(in: bottle, from: oldBottleURL, to: destination)
             }
             try FileManager.default.moveItem(at: oldBottleURL, to: destination)
             if let path = BottleVM.shared.bottlesList.paths.firstIndex(of: oldBottleURL) {
@@ -244,6 +218,27 @@ extension Bottle {
                 }
             }
             print("Failed to move bottle: \(error)")
+        }
+    }
+
+    /// Rewrite settings that store absolute paths after the directory move.
+    private func rewriteMovedPaths(in bottle: Bottle, from oldURL: URL, to destination: URL) {
+        for index in 0..<bottle.settings.pins.count {
+            let pin = bottle.settings.pins[index]
+            if let pinURL = pin.url {
+                bottle.settings.pins[index].url = pinURL.updateParentBottle(old: oldURL,
+                                                                            new: destination)
+            }
+        }
+
+        for index in 0..<bottle.settings.blocklist.count {
+            bottle.settings.blocklist[index] = bottle.settings.blocklist[index]
+                .updateParentBottle(old: oldURL, new: destination)
+        }
+
+        for index in 0..<bottle.settings.importedShortcuts.count {
+            bottle.settings.importedShortcuts[index] = bottle.settings.importedShortcuts[index]
+                .updateParentBottle(old: oldURL, new: destination)
         }
     }
 

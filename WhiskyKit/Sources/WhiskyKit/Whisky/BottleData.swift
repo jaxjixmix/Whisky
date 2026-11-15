@@ -107,9 +107,9 @@ public struct BottleData: Codable {
 
             let loadedVersion = fileVersion
             if loadedVersion != Self.currentVersion {
-                Logger.wineKit.warning(
-                    "Bottle registry version \(loadedVersion, privacy: .public); rewriting as \(Self.currentVersion, privacy: .public)"
-                )
+                let versionMessage = "Bottle registry version \(loadedVersion); "
+                    + "rewriting as \(Self.currentVersion)"
+                Logger.wineKit.warning("\(versionMessage, privacy: .public)")
                 // Keep the registered paths and let `init` re-encode the
                 // current format instead of discarding the list.
                 fileVersion = Self.currentVersion
@@ -118,9 +118,10 @@ public struct BottleData: Codable {
             return true
         } catch {
             let backup = Self.backUpCorruptRegistry(at: entriesFile)
-            Logger.wineKit.error(
-                "Failed to decode bottle registry: \(error, privacy: .public); backed up to \(backup?.path(percentEncoded: false) ?? "(failed)", privacy: .public)"
-            )
+            let backupPath = backup?.path(percentEncoded: false) ?? "(failed)"
+            let decodeMessage = "Failed to decode bottle registry: \(error); "
+                + "backed up to \(backupPath)"
+            Logger.wineKit.error("\(decodeMessage, privacy: .public)")
             return false
         }
     }
@@ -139,17 +140,20 @@ public struct BottleData: Codable {
             try data.write(to: entriesFile)
             return true
         } catch {
-            Logger.wineKit.error(
-                "Failed to write bottle registry at \(entriesFile.path(percentEncoded: false), privacy: .public): \(error, privacy: .public)"
-            )
+            let registryPath = entriesFile.path(percentEncoded: false)
+            let writeMessage = "Failed to write bottle registry at \(registryPath): \(error)"
+            Logger.wineKit.error("\(writeMessage, privacy: .public)")
             return false
         }
     }
 
     /// Move an unreadable registry aside before a fresh one is written.
     private static func backUpCorruptRegistry(at file: URL) -> URL? {
+        let name = file.deletingPathExtension().lastPathComponent
+        let stamp = Int(Date.now.timeIntervalSince1970)
+        let suffix = UUID().uuidString.prefix(8)
         let backup = file.deletingLastPathComponent()
-            .appending(path: "\(file.deletingPathExtension().lastPathComponent).corrupt-\(Int(Date.now.timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
+            .appending(path: "\(name).corrupt-\(stamp)-\(suffix)")
             .appendingPathExtension("plist")
         do {
             try FileManager.default.moveItem(at: file, to: backup)

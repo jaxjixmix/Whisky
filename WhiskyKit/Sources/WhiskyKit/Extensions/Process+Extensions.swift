@@ -65,7 +65,7 @@ private final class PipeLineBuffer: @unchecked Sendable {
             data.removeLast()
         }
         guard !data.isEmpty else { return nil }
-        return String(decoding: data, as: UTF8.self)
+        return String(bytes: data, encoding: .utf8)
     }
 }
 
@@ -114,59 +114,15 @@ public extension Process {
                 fileHandle?.write(line: line + "\n")
             }
 
-            // A readability handler stays armed after EOF and fires forever on
-            // an always-readable closed pipe, which pegs a core (issue #1010).
-            // Disarm it on the first empty read; the final bytes are drained in
-            // the termination handler.
-            pipe.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                if data.isEmpty {
-                    handle.readabilityHandler = nil
-                    if let line = stdoutBuffer.flush() {
-                        emitMessage(line)
-                    }
-                    return
-                }
-                for line in stdoutBuffer.append(data) {
-                    emitMessage(line)
-                }
-            }
-
-            errorPipe.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                if data.isEmpty {
-                    handle.readabilityHandler = nil
-                    if let line = stderrBuffer.flush() {
-                        emitError(line)
-                    }
-                    return
-                }
-                for line in stderrBuffer.append(data) {
-                    emitError(line)
-                }
-            }
+            self.installLineHandler(on: pipe, buffer: stdoutBuffer, emit: emitMessage)
+            self.installLineHandler(on: errorPipe, buffer: stderrBuffer, emit: emitError)
 
             terminationHandler = { (process: Process) in
                 pipe.fileHandleForReading.readabilityHandler = nil
                 errorPipe.fileHandleForReading.readabilityHandler = nil
 
-                if let remaining = try? pipe.fileHandleForReading.readToEnd(), !remaining.isEmpty {
-                    for line in stdoutBuffer.append(remaining) {
-                        emitMessage(line)
-                    }
-                }
-                if let line = stdoutBuffer.flush() {
-                    emitMessage(line)
-                }
-
-                if let remaining = try? errorPipe.fileHandleForReading.readToEnd(), !remaining.isEmpty {
-                    for line in stderrBuffer.append(remaining) {
-                        emitError(line)
-                    }
-                }
-                if let line = stderrBuffer.flush() {
-                    emitError(line)
-                }
+                self.drain(pipe, buffer: stdoutBuffer, emit: emitMessage)
+                self.drain(errorPipe, buffer: stderrBuffer, emit: emitError)
 
                 try? fileHandle?.close()
 
@@ -174,6 +130,41 @@ public extension Process {
                 continuation.yield(.terminated(process))
                 continuation.finish()
             }
+        }
+    }
+
+    /// Read pipe bytes until a newline and emit whole lines. The handler
+    /// disarms itself at EOF; a permanently-readable closed pipe otherwise
+    /// fires forever (issue #1010).
+    private func installLineHandler(
+        on pipe: Pipe,
+        buffer: PipeLineBuffer,
+        emit: @escaping @Sendable (String) -> Void
+    ) {
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                if let line = buffer.flush() {
+                    emit(line)
+                }
+                return
+            }
+            for line in buffer.append(data) {
+                emit(line)
+            }
+        }
+    }
+
+    /// Consume anything the readability handler did not see before exit.
+    private func drain(_ pipe: Pipe, buffer: PipeLineBuffer, emit: @Sendable (String) -> Void) {
+        if let remaining = try? pipe.fileHandleForReading.readToEnd(), !remaining.isEmpty {
+            for line in buffer.append(remaining) {
+                emit(line)
+            }
+        }
+        if let line = buffer.flush() {
+            emit(line)
         }
     }
 

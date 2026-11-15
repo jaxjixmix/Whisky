@@ -261,9 +261,9 @@ public struct BottleSettings: Codable, Equatable {
         } catch {
             // Keep the unreadable file for recovery instead of overwriting it
             // with defaults on the next save.
-            Logger.wineKit.error(
-                "Failed to decode bottle settings at \(metadataURL.path(percentEncoded: false), privacy: .public): \(error, privacy: .public)"
-            )
+            let path = metadataURL.path(percentEncoded: false)
+            let message = "Failed to decode bottle settings at \(path): \(error)"
+            Logger.wineKit.error("\(message, privacy: .public)")
             quarantine(metadataURL)
             settings = BottleSettings()
             try settings.encode(to: metadataURL)
@@ -290,9 +290,12 @@ public struct BottleSettings: Codable, Equatable {
 
     /// Move an unreadable settings file aside so a later save cannot destroy it.
     private static func quarantine(_ metadataURL: URL) {
+        let name = metadataURL.deletingPathExtension().lastPathComponent
+        let stamp = Int(Date.now.timeIntervalSince1970)
+        let suffix = UUID().uuidString.prefix(8)
         let backup = metadataURL
             .deletingLastPathComponent()
-            .appending(path: "\(metadataURL.deletingPathExtension().lastPathComponent).corrupt-\(Int(Date.now.timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
+            .appending(path: "\(name).corrupt-\(stamp)-\(suffix)")
             .appendingPathExtension("plist")
         do {
             try FileManager.default.moveItem(at: metadataURL, to: backup)
