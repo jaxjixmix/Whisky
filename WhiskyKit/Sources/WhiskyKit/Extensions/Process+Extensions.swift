@@ -29,6 +29,8 @@ public enum ProcessOutput: Hashable {
 /// Buffers pipe bytes until a newline, so a read that splits a line (or a
 /// multi-byte character) never produces a partial message or a lost byte.
 private final class PipeLineBuffer: @unchecked Sendable {
+    /// A child that never writes a newline must not grow memory without bound.
+    private static let maxBufferedBytes = 1_000_000
     private var buffer = Data()
     private let lock = NSLock()
 
@@ -45,6 +47,13 @@ private final class PipeLineBuffer: @unchecked Sendable {
             if let line = decode(lineData) {
                 lines.append(line)
             }
+        }
+
+        if buffer.count > Self.maxBufferedBytes {
+            if let line = decode(buffer) {
+                lines.append(line)
+            }
+            buffer.removeAll(keepingCapacity: true)
         }
         return lines
     }

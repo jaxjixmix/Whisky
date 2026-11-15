@@ -42,6 +42,9 @@ struct SecuritySelfTest {
         check(runtimePresenceRejectsSymlink(), "a symlinked runtime is not treated as installed")
         check(installVerifierRejectsBadChecksum(), "the installer rejects a bad archive hash")
 
+        let longLineBytes = await streamedNoNewlineBytes()
+        check(longLineBytes == 2_000_000, "long lines are chunked and preserved: \(longLineBytes)")
+
         if failures > 0 {
             print("\(failures) security self-test(s) failed")
             exit(1)
@@ -181,5 +184,23 @@ struct SecuritySelfTest {
             print("checksum test error: \(error)")
             return false
         }
+    }
+
+    static func streamedNoNewlineBytes() async -> Int {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "head -c 2000000 /dev/zero | tr '\\0' A"]
+
+        guard let stream = try? process.runStream(name: "long-line-test", fileHandle: nil) else {
+            return -1
+        }
+
+        var total = 0
+        for await output in stream {
+            if case .message(let message) = output {
+                total += message.utf8.count
+            }
+        }
+        return total
     }
 }

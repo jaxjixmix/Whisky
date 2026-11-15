@@ -8,7 +8,7 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 - [x] S2 Program args shell injection — done: args split + ShellQuoting; regression test passes.
 - [x] S3 Runtime integrity — done: sha256/signature manifest, Ed25519 verifier, release-strict/debug-warn, symlink rejection, tests pass.
 - [x] S4 Shortcut script — done: 0755 and atomic writes (replaces a symlink); typecheck OK.
-- [ ] S5 Pipe buffer cap — 1 MB cap in `PipeLineBuffer`; 2 MB no-newline test.
+- [x] S5 Pipe buffer cap — done: 1 MB cap, 2 MB no-newline test passes.
 - [ ] S6 Parser caps — PE icon bounds, bitmap dimensions/colour table, `.lnk` cap; tests.
 - [ ] S7 Download caps — 2 GB runtime, 1 MB version plist, localized error.
 - [ ] S8 Log permissions — 0600 files, 0700 folder; test.
