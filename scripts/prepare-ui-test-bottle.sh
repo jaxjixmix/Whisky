@@ -67,7 +67,10 @@ cat > "$CONTAINER/BottleVM.plist" <<EOF
 	</dict>
 	<key>paths</key>
 	<array>
-		<string>file://$BOTTLE</string>
+		<dict>
+			<key>relative</key>
+			<string>file://$BOTTLE</string>
+		</dict>
 	</array>
 </dict>
 </plist>
