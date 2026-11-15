@@ -21,6 +21,37 @@ import AppKit
 import WhiskyKit
 import os.log
 
+/// Helper, crash-reporter and redistributable executables that should not
+/// appear in the user's program list (upstream #1215 and launcher noise).
+private let noiseExecutables: Set<String> = [
+    "steamerrorreporter.exe",
+    "steamerrorreporter64.exe",
+    "steamservice.exe",
+    "steamwebhelper.exe",
+    "steam_monitor.exe",
+    "steamsysinfo.exe",
+    "steamxboxutil.exe",
+    "crashreporter.exe",
+    "crashhandler.exe",
+    "crashpad_handler.exe",
+    "gameoverlayui.exe",
+    "gameoverlayui64.exe",
+    "fossilize-replay.exe",
+    "fossilize-replay64.exe",
+    "gldriverquery.exe",
+    "gldriverquery64.exe",
+    "hardwareupdater.exe",
+    "secure_desktop_capture.exe",
+    "writeminidump.exe",
+    "vc_redist.x86.exe",
+    "vc_redist.x64.exe",
+    "vcredist_x86.exe",
+    "vcredist_x64.exe",
+    "ueprereqsetup_x86.exe",
+    "ueprereqsetup_x64.exe",
+    "crossover html engine.exe"
+]
+
 extension Bottle {
     func openCDrive() {
         NSWorkspace.shared.open(url.appending(path: "drive_c"))
@@ -30,12 +61,12 @@ extension Bottle {
         let whiskyCmdURL = Bundle.main.url(forResource: "WhiskyCmd", withExtension: nil)
         if let whiskyCmdURL = whiskyCmdURL {
             let whiskyCmd = whiskyCmdURL.path(percentEncoded: false)
-            let cmd = "eval \\\"$(\\\"\(whiskyCmd)\\\" shellenv \\\"\(settings.name)\\\")\\\""
+            let cmd = "eval \"$(\(ShellQuoting.quoted(whiskyCmd)) shellenv \(ShellQuoting.quoted(settings.name)))\""
 
             let script = """
             tell application "Terminal"
             activate
-            do script "\(cmd)"
+            do script "\(cmd.appleScriptQuoted)"
             end tell
             """
 
@@ -55,67 +86,79 @@ extension Bottle {
 
     @discardableResult
     func getStartMenuPrograms() -> [Program] {
-        let globalStartMenu = url
-            .appending(path: "drive_c")
-            .appending(path: "ProgramData")
-            .appending(path: "Microsoft")
-            .appending(path: "Windows")
-            .appending(path: "Start Menu")
-
-        let userStartMenu = url
-            .appending(path: "drive_c")
-            .appending(path: "users")
-            .appending(path: "crossover")
-            .appending(path: "AppData")
-            .appending(path: "Roaming")
-            .appending(path: "Microsoft")
-            .appending(path: "Windows")
-            .appending(path: "Start Menu")
-
         var startMenuPrograms: [Program] = []
-        var linkURLs: [URL] = []
-        let globalEnumerator = FileManager.default.enumerator(at: globalStartMenu,
-                                                              includingPropertiesForKeys: [.isRegularFileKey],
-                                                              options: [.skipsHiddenFiles])
-        while let url = globalEnumerator?.nextObject() as? URL {
-            if url.pathExtension == "lnk" {
-                linkURLs.append(url)
-            }
-        }
+        let alreadyImported = Set(settings.importedShortcuts)
+        var newlyImported: [URL] = []
 
-        let userEnumerator = FileManager.default.enumerator(at: userStartMenu,
-                                                            includingPropertiesForKeys: [.isRegularFileKey],
-                                                            options: [.skipsHiddenFiles])
-        while let url = userEnumerator?.nextObject() as? URL {
-            if url.pathExtension == "lnk" {
-                linkURLs.append(url)
-            }
-        }
-
-        linkURLs.sort(by: { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() })
-
-        for link in linkURLs {
+        for link in startMenuLinkURLs() where !alreadyImported.contains(link) {
             do {
                 if let program = ShellLinkHeader.getProgram(url: link,
                                                             handle: try FileHandle(forReadingFrom: link),
                                                             bottle: self) {
                     if !startMenuPrograms.contains(where: { $0.url == program.url }) {
                         startMenuPrograms.append(program)
-                        try FileManager.default.removeItem(at: link)
                     }
+                    // Keep the .lnk: it belongs to the bottle, and importing
+                    // it again after an unpin would silently re-pin it.
+                    newlyImported.append(link)
                 }
             } catch {
                 print(error)
             }
         }
 
+        if !newlyImported.isEmpty {
+            settings.importedShortcuts.append(contentsOf: newlyImported)
+        }
+
         return startMenuPrograms
     }
 
-    func updateInstalledPrograms() {
+    /// Both Start Menu trees, sorted by shortcut name.
+    private func startMenuLinkURLs() -> [URL] {
+        let menus = [
+            url.appending(path: "drive_c/ProgramData/Microsoft/Windows/Start Menu"),
+            url.appending(path: "drive_c/users/crossover/AppData/Roaming/Microsoft/Windows/Start Menu")
+        ]
+        var linkURLs: [URL] = []
+
+        for menu in menus {
+            let enumerator = FileManager.default.enumerator(
+                at: menu, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]
+            )
+            while let item = enumerator?.nextObject() as? URL {
+                if item.pathExtension == "lnk" {
+                    linkURLs.append(item)
+                }
+            }
+        }
+
+        return linkURLs.sorted { $0.lastPathComponent.lowercased() < $1.lastPathComponent.lowercased() }
+    }
+
+    @MainActor
+    func updateInstalledPrograms() async {
         let driveC = url.appending(path: "drive_c")
+        let blocklist = settings.blocklist
+        let pins = settings.pins
+        let bottle = self
+
+        let programs = await Task.detached(priority: .userInitiated) {
+            Self.scanInstalledPrograms(driveC: driveC, blocklist: blocklist, pins: pins, bottle: bottle)
+        }.value
+
+        self.programs = programs
+    }
+
+    /// Filesystem walk and PE/settings parsing; safe to run off the main actor.
+    private static func scanInstalledPrograms(
+        driveC: URL,
+        blocklist: [URL],
+        pins: [PinnedProgram],
+        bottle: Bottle
+    ) -> [Program] {
         var programs: [Program] = []
-        var foundURLS: Set<URL> = []
+        var foundURLs: Set<URL> = []
 
         for folderName in ["Program Files", "Program Files (x86)"] {
             let folderURL = driveC.appending(path: folderName)
@@ -125,48 +168,77 @@ extension Bottle {
 
             while let url = enumerator?.nextObject() as? URL {
                 guard !url.hasDirectoryPath && url.pathExtension == "exe" else { continue }
-                guard !settings.blocklist.contains(url) else { continue }
-                foundURLS.insert(url)
-                programs.append(Program(url: url, bottle: self))
+                guard !noiseExecutables.contains(url.lastPathComponent.lowercased()) else { continue }
+                guard !blocklist.contains(url) else { continue }
+                foundURLs.insert(url)
+                programs.append(Program(url: url, bottle: bottle,
+                                        pinned: pins.contains(where: { $0.url == url })))
             }
         }
 
-        // Add missing programs from pins
-        for pin in settings.pins {
-            guard let url = pin.url else { continue }
-            guard !foundURLS.contains(url) else { continue }
-            programs.append(Program(url: url, bottle: self))
+        // Add missing programs from pins.
+        for pin in pins {
+            guard let url = pin.url, !foundURLs.contains(url) else { continue }
+            programs.append(Program(url: url, bottle: bottle, pinned: true))
         }
 
-        self.programs = programs.sorted { $0.name.lowercased() < $1.name.lowercased() }
+        return programs.sorted { $0.name.lowercased() < $1.name.lowercased() }
     }
 
     @MainActor
     func move(destination: URL) {
-        do {
-            if let bottle = BottleVM.shared.bottles.first(where: { $0.url == url }) {
-                bottle.inFlight = true
-                for index in 0..<bottle.settings.pins.count {
-                    let pin = bottle.settings.pins[index]
-                    if let url = pin.url {
-                        bottle.settings.pins[index].url = url.updateParentBottle(old: url,
-                                                                                 new: destination)
-                    }
-                }
+        let oldBottleURL = url
+        let movedBottle = BottleVM.shared.bottles.first(where: { $0.url == oldBottleURL })
+        let originalPins = movedBottle?.settings.pins
+        let originalBlocklist = movedBottle?.settings.blocklist
+        let originalShortcuts = movedBottle?.settings.importedShortcuts
 
-                for index in 0..<bottle.settings.blocklist.count {
-                    let blockedUrl = bottle.settings.blocklist[index]
-                    bottle.settings.blocklist[index] = blockedUrl.updateParentBottle(old: url,
-                                                                                     new: destination)
-                }
+        do {
+            if let bottle = movedBottle {
+                bottle.inFlight = true
+                rewriteMovedPaths(in: bottle, from: oldBottleURL, to: destination)
             }
-            try FileManager.default.moveItem(at: url, to: destination)
-            if let path = BottleVM.shared.bottlesList.paths.firstIndex(of: url) {
+            try FileManager.default.moveItem(at: oldBottleURL, to: destination)
+            if let path = BottleVM.shared.bottlesList.paths.firstIndex(of: oldBottleURL) {
                 BottleVM.shared.bottlesList.paths[path] = destination
             }
             BottleVM.shared.loadBottles()
         } catch {
-            print("Failed to move bottle")
+            // The directory did not move: put the rewritten paths back so the
+            // bottle's settings still point inside the old location.
+            if let bottle = movedBottle {
+                if let originalPins {
+                    bottle.settings.pins = originalPins
+                }
+                if let originalBlocklist {
+                    bottle.settings.blocklist = originalBlocklist
+                }
+                if let originalShortcuts {
+                    bottle.settings.importedShortcuts = originalShortcuts
+                }
+            }
+            print("Failed to move bottle: \(error)")
+        }
+    }
+
+    /// Rewrite settings that store absolute paths after the directory move.
+    private func rewriteMovedPaths(in bottle: Bottle, from oldURL: URL, to destination: URL) {
+        for index in 0..<bottle.settings.pins.count {
+            let pin = bottle.settings.pins[index]
+            if let pinURL = pin.url {
+                bottle.settings.pins[index].url = pinURL.updateParentBottle(old: oldURL,
+                                                                            new: destination)
+            }
+        }
+
+        for index in 0..<bottle.settings.blocklist.count {
+            bottle.settings.blocklist[index] = bottle.settings.blocklist[index]
+                .updateParentBottle(old: oldURL, new: destination)
+        }
+
+        for index in 0..<bottle.settings.importedShortcuts.count {
+            bottle.settings.importedShortcuts[index] = bottle.settings.importedShortcuts[index]
+                .updateParentBottle(old: oldURL, new: destination)
         }
     }
 

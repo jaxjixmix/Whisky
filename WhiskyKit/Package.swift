@@ -41,6 +41,11 @@ let package = Package(
         .testTarget(
             name: "WhiskyKitTests",
             dependencies: ["WhiskyKit"]
+        ),
+        .executableTarget(
+            name: "WhiskyKitSelfTest",
+            dependencies: ["WhiskyKit"],
+            path: "Tests/WhiskyKitSelfTest"
         )
     ],
     swiftLanguageVersions: [.version("6")]

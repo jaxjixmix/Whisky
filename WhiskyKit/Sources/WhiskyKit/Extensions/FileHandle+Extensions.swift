@@ -34,13 +34,19 @@ extension FileHandle {
         }
     }
 
-    /// Repeated wine errors have filled whole disks (upstream #1261, #1115);
-    /// past this size the log restarts with the newest output
+    /// Repeated Wine errors have filled whole disks (upstream #1115/#1261).
+    /// Past this size a log restarts with a marker, keeping the newest output.
     static let maxLogSize: UInt64 = 50_000_000
+    private static let logWriteLock = NSLock()
 
     func write(line: String) {
+        guard let data = line.data(using: .utf8) else { return }
+
+        // stdout and stderr handlers write to the same handle concurrently.
+        Self.logWriteLock.lock()
+        defer { Self.logWriteLock.unlock() }
+
         do {
-            guard let data = line.data(using: .utf8) else { return }
             if offsetInFile + UInt64(data.count) > Self.maxLogSize {
                 try truncate(atOffset: 0)
                 let note = "--- log truncated at \(Self.maxLogSize / 1_000_000) MB, "

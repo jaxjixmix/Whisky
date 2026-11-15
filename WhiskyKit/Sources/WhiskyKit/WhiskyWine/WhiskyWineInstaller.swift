@@ -18,6 +18,21 @@
 
 import Foundation
 import SemanticVersion
+import os.log
+
+public enum WhiskyWineInstallError: LocalizedError {
+    case tarballMissing
+    case invalidArchive
+
+    public var errorDescription: String? {
+        switch self {
+        case .tarballMissing:
+            return "The downloaded runtime archive is missing."
+        case .invalidArchive:
+            return "The downloaded archive does not contain a usable Wine runtime."
+        }
+    }
+}
 
 public class WhiskyWineInstaller {
     /// The Whisky application folder
@@ -32,24 +47,69 @@ public class WhiskyWineInstaller {
     public static let binFolder: URL = libraryFolder.appending(path: "Wine").appending(path: "bin")
 
     public static func isWhiskyWineInstalled() -> Bool {
-        return whiskyWineVersion() != nil
+        return isRuntimePresent(inLibraryFolder: libraryFolder)
     }
 
-    public static func install(from: URL) {
-        do {
-            if !FileManager.default.fileExists(atPath: applicationFolder.path) {
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            } else {
-                // Recreate it
-                try FileManager.default.removeItem(at: applicationFolder)
-                try FileManager.default.createDirectory(at: applicationFolder, withIntermediateDirectories: true)
-            }
+    /// Whether `folder` contains both the version record and the `wine64`
+    /// binary. A half-extracted runtime must not count as installed.
+    static func isRuntimePresent(inLibraryFolder folder: URL) -> Bool {
+        let versionPlist = folder
+            .appending(path: "WhiskyWineVersion")
+            .appendingPathExtension("plist")
+        guard whiskyWineInfo(at: versionPlist) != nil else { return false }
 
-            try Tar.untar(tarBall: from, toURL: applicationFolder)
-            try FileManager.default.removeItem(at: from)
-        } catch {
-            print("Failed to install WhiskyWine: \(error)")
+        let wine64 = folder
+            .appending(path: "Wine")
+            .appending(path: "bin")
+            .appending(path: "wine64")
+        return FileManager.default.fileExists(atPath: wine64.path(percentEncoded: false))
+    }
+
+    /// Extract into a staging directory, validate it, then swap it in. A bad
+    /// archive leaves the installed runtime untouched (upstream #1275/#1278).
+    public static func install(from: URL) throws {
+        try install(tarball: from, into: applicationFolder)
+    }
+
+    static func install(tarball: URL, into destination: URL) throws {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: tarball.path(percentEncoded: false)) else {
+            throw WhiskyWineInstallError.tarballMissing
         }
+
+        let staging = fileManager.temporaryDirectory
+            .appending(path: "whisky-runtime-\(UUID().uuidString)")
+        defer { try? fileManager.removeItem(at: staging) }
+        try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
+
+        try Tar.untar(tarBall: tarball, toURL: staging)
+
+        // The published archive contains Libraries/ at its root.
+        let stagedLibraries = staging.appending(path: "Libraries")
+        guard isRuntimePresent(inLibraryFolder: stagedLibraries) else {
+            throw WhiskyWineInstallError.invalidArchive
+        }
+
+        try fileManager.createDirectory(at: destination, withIntermediateDirectories: true)
+        let liveLibraries = destination.appending(path: "Libraries")
+        let backup = destination.appending(path: "Libraries.backup-\(UUID().uuidString)")
+
+        if fileManager.fileExists(atPath: liveLibraries.path(percentEncoded: false)) {
+            try fileManager.moveItem(at: liveLibraries, to: backup)
+        }
+
+        do {
+            try fileManager.moveItem(at: stagedLibraries, to: liveLibraries)
+            try? fileManager.removeItem(at: backup)
+        } catch {
+            try? fileManager.removeItem(at: liveLibraries)
+            if fileManager.fileExists(atPath: backup.path(percentEncoded: false)) {
+                try? fileManager.moveItem(at: backup, to: liveLibraries)
+            }
+            throw error
+        }
+
+        try? fileManager.removeItem(at: tarball)
     }
 
     public static func uninstall() {
@@ -68,7 +128,10 @@ public class WhiskyWineInstaller {
 
         if let remoteUrl = URL(string: versionPlistURL) {
             remoteVersion = await withCheckedContinuation { continuation in
-                URLSession(configuration: .ephemeral).dataTask(with: URLRequest(url: remoteUrl)) { data, _, error in
+                var request = URLRequest(url: remoteUrl)
+                // A stalled version check must not leave the update task hanging.
+                request.timeoutInterval = 15
+                URLSession(configuration: .ephemeral).dataTask(with: request) { data, _, error in
                     do {
                         if error == nil, let data = data {
                             let decoder = PropertyListDecoder()
@@ -100,17 +163,25 @@ public class WhiskyWineInstaller {
     }
 
     public static func whiskyWineVersion() -> SemanticVersion? {
-        do {
-            let versionPlist = libraryFolder
-                .appending(path: "WhiskyWineVersion")
-                .appendingPathExtension("plist")
+        let versionPlist = libraryFolder
+            .appending(path: "WhiskyWineVersion")
+            .appendingPathExtension("plist")
+        return whiskyWineInfo(at: versionPlist)?.version
+    }
 
+    private static func whiskyWineInfo(at versionPlist: URL) -> WhiskyWineVersion? {
+        guard FileManager.default.fileExists(atPath: versionPlist.path(percentEncoded: false)) else {
+            return nil
+        }
+        do {
             let decoder = PropertyListDecoder()
             let data = try Data(contentsOf: versionPlist)
             let info = try decoder.decode(WhiskyWineVersion.self, from: data)
-            return info.version
+            return info
         } catch {
-            print(error)
+            let path = versionPlist.path(percentEncoded: false)
+            let message = "Failed to read WhiskyWine version at \(path): \(error)"
+            Logger.wineKit.error("\(message, privacy: .public)")
             return nil
         }
     }

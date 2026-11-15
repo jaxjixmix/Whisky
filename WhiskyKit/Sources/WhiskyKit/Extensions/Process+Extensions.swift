@@ -26,6 +26,49 @@ public enum ProcessOutput: Hashable {
     case terminated(Process)
 }
 
+/// Buffers pipe bytes until a newline, so a read that splits a line (or a
+/// multi-byte character) never produces a partial message or a lost byte.
+private final class PipeLineBuffer: @unchecked Sendable {
+    private var buffer = Data()
+    private let lock = NSLock()
+
+    func append(_ data: Data) -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        buffer.append(data)
+
+        var lines: [String] = []
+        while let newline = buffer.firstIndex(of: 0x0A) {
+            let lineData = buffer[buffer.startIndex..<newline]
+            buffer.removeSubrange(buffer.startIndex...newline)
+            if let line = decode(lineData) {
+                lines.append(line)
+            }
+        }
+        return lines
+    }
+
+    func flush() -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !buffer.isEmpty else { return nil }
+        let lineData = buffer
+        buffer.removeAll(keepingCapacity: false)
+        return decode(lineData)
+    }
+
+    private func decode(_ data: Data) -> String? {
+        var data = data
+        if data.last == 0x0D {
+            data.removeLast()
+        }
+        guard !data.isEmpty else { return nil }
+        return String(bytes: data, encoding: .utf8)
+    }
+}
+
 public extension Process {
     /// Run the process returning a stream output
     func runStream(name: String, fileHandle: FileHandle?) throws -> AsyncStream<ProcessOutput> {
@@ -57,35 +100,71 @@ public extension Process {
 
             continuation.yield(.started(self))
 
-            pipe.fileHandleForReading.readabilityHandler = { pipe in
-                guard let line = pipe.nextLine() else { return }
+            let stdoutBuffer = PipeLineBuffer()
+            let stderrBuffer = PipeLineBuffer()
+
+            let emitMessage: @Sendable (String) -> Void = { line in
                 continuation.yield(.message(line))
-                guard !line.isEmpty else { return }
                 Logger.wineKit.info("\(line, privacy: .public)")
-                fileHandle?.write(line: line)
+                fileHandle?.write(line: line + "\n")
+            }
+            let emitError: @Sendable (String) -> Void = { line in
+                continuation.yield(.error(line))
+                Logger.wineKit.warning("\(line, privacy: .public)")
+                fileHandle?.write(line: line + "\n")
             }
 
-            errorPipe.fileHandleForReading.readabilityHandler = { pipe in
-                guard let line = pipe.nextLine() else { return }
-                continuation.yield(.error(line))
-                guard !line.isEmpty else { return }
-                Logger.wineKit.warning("\(line, privacy: .public)")
-                fileHandle?.write(line: line)
-            }
+            self.installLineHandler(on: pipe, buffer: stdoutBuffer, emit: emitMessage)
+            self.installLineHandler(on: errorPipe, buffer: stderrBuffer, emit: emitError)
 
             terminationHandler = { (process: Process) in
-                do {
-                    _ = try pipe.fileHandleForReading.readToEnd()
-                    _ = try errorPipe.fileHandleForReading.readToEnd()
-                    try fileHandle?.close()
-                } catch {
-                    Logger.wineKit.error("Error while clearing data: \(error)")
-                }
+                pipe.fileHandleForReading.readabilityHandler = nil
+                errorPipe.fileHandleForReading.readabilityHandler = nil
+
+                self.drain(pipe, buffer: stdoutBuffer, emit: emitMessage)
+                self.drain(errorPipe, buffer: stderrBuffer, emit: emitError)
+
+                try? fileHandle?.close()
 
                 process.logTermination(name: name)
                 continuation.yield(.terminated(process))
                 continuation.finish()
             }
+        }
+    }
+
+    /// Read pipe bytes until a newline and emit whole lines. The handler
+    /// disarms itself at EOF; a permanently-readable closed pipe otherwise
+    /// fires forever (issue #1010).
+    private func installLineHandler(
+        on pipe: Pipe,
+        buffer: PipeLineBuffer,
+        emit: @escaping @Sendable (String) -> Void
+    ) {
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                if let line = buffer.flush() {
+                    emit(line)
+                }
+                return
+            }
+            for line in buffer.append(data) {
+                emit(line)
+            }
+        }
+    }
+
+    /// Consume anything the readability handler did not see before exit.
+    private func drain(_ pipe: Pipe, buffer: PipeLineBuffer, emit: @Sendable (String) -> Void) {
+        if let remaining = try? pipe.fileHandleForReading.readToEnd(), !remaining.isEmpty {
+            for line in buffer.append(remaining) {
+                emit(line)
+            }
+        }
+        if let line = buffer.flush() {
+            emit(line)
         }
     }
 
@@ -115,17 +194,6 @@ public extension Process {
         }
         if let environment = environment {
             Logger.wineKit.info("Environment: \(environment)")
-        }
-    }
-}
-
-extension FileHandle {
-    func nextLine() -> String? {
-        guard let line = String(data: availableData, encoding: .utf8) else { return nil }
-        if !line.isEmpty {
-            return line
-        } else {
-            return nil
         }
     }
 }

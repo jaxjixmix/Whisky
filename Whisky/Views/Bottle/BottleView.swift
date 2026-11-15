@@ -100,7 +100,7 @@ struct BottleView: View {
                                 } else {
                                     programLoading = false
                                 }
-                                updateStartMenu()
+                                await updateStartMenu()
                             }
                         }
                     }
@@ -114,8 +114,8 @@ struct BottleView: View {
                 }
                 .padding()
             }
-            .onAppear {
-                updateStartMenu()
+            .task {
+                await updateStartMenu()
             }
             .disabled(!bottle.isAvailable)
             .navigationTitle(bottle.settings.name)
@@ -145,20 +145,16 @@ struct BottleView: View {
         }
     }
 
-    private func updateStartMenu() {
-        bottle.updateInstalledPrograms()
+    private func updateStartMenu() async {
+        await bottle.updateInstalledPrograms()
 
         let startMenuPrograms = bottle.getStartMenuPrograms()
         for startMenuProgram in startMenuPrograms {
             for program in bottle.programs where
             // For some godforsaken reason "foo/bar" != "foo/Bar" so...
             program.url.path().caseInsensitiveCompare(startMenuProgram.url.path()) == .orderedSame {
+                guard !bottle.settings.pins.contains(where: { $0.url == program.url }) else { continue }
                 program.pinned = true
-                guard !bottle.settings.pins.contains(where: { $0.url == program.url }) else { return }
-                bottle.settings.pins.append(PinnedProgram(
-                    name: program.url.deletingPathExtension().lastPathComponent,
-                    url: program.url
-                ))
             }
         }
     }

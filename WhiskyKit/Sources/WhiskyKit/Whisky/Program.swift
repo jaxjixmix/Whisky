@@ -50,11 +50,11 @@ public final class Program: ObservableObject, Equatable, Hashable, Identifiable,
 
     public let peFile: PEFile?
 
-    public init(url: URL, bottle: Bottle) {
+    public init(url: URL, bottle: Bottle, pinned: Bool? = nil) {
         let name = url.lastPathComponent
         self.bottle = bottle
         self.url = url
-        self.pinned = bottle.settings.pins.contains(where: { $0.url == url })
+        self.pinned = pinned ?? bottle.settings.pins.contains(where: { $0.url == url })
 
         // Warning: This will break if two programs share the same name such as "Launch.exe"
         // Best to add some sort of UUID in the path or file

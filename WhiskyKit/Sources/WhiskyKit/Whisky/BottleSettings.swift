@@ -20,27 +20,19 @@ import Foundation
 import SemanticVersion
 import os.log
 
-public struct PinnedProgram: Codable, Hashable, Equatable {
+public struct PinnedProgram: Codable, Hashable, Equatable, Sendable {
     public var name: String
     public var url: URL?
-    public var removable: Bool
 
     public init(name: String, url: URL) {
         self.name = name
         self.url = url
-        do {
-            let volume = try url.resourceValues(forKeys: [.volumeURLKey]).volume
-            self.removable = try !(volume?.resourceValues(forKeys: [.volumeIsInternalKey]).volumeIsInternal ?? false)
-        } catch {
-            self.removable = false
-        }
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         self.url = try container.decodeIfPresent(URL.self, forKey: .url)
-        self.removable = try container.decodeIfPresent(Bool.self, forKey: .removable) ?? false
     }
 }
 
@@ -48,6 +40,9 @@ public struct BottleInfo: Codable, Equatable {
     var name: String = "Bottle"
     var pins: [PinnedProgram] = []
     var blocklist: [URL] = []
+    /// Start-Menu shortcuts already imported, so a shortcut that stays in the
+    /// bottle is not imported (and pinned) again after the user unpins it.
+    var importedShortcuts: [URL] = []
 
     public init() {}
 
@@ -56,6 +51,7 @@ public struct BottleInfo: Codable, Equatable {
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Bottle"
         self.pins = try container.decodeIfPresent([PinnedProgram].self, forKey: .pins) ?? []
         self.blocklist = try container.decodeIfPresent([URL].self, forKey: .blocklist) ?? []
+        self.importedShortcuts = try container.decodeIfPresent([URL].self, forKey: .importedShortcuts) ?? []
     }
 }
 
@@ -205,6 +201,12 @@ public struct BottleSettings: Codable, Equatable {
         set { info.blocklist = newValue }
     }
 
+    /// Start-Menu shortcuts already imported into pins.
+    public var importedShortcuts: [URL] {
+        get { return info.importedShortcuts }
+        set { info.importedShortcuts = newValue }
+    }
+
     public var enhancedSync: EnhancedSync {
         get { return wineConfig.enhancedSync }
         set { wineConfig.enhancedSync = newValue }
@@ -243,18 +245,34 @@ public struct BottleSettings: Codable, Equatable {
     @discardableResult
     public static func decode(from metadataURL: URL) throws -> BottleSettings {
         guard FileManager.default.fileExists(atPath: metadataURL.path(percentEncoded: false)) else {
-            let decoder = PropertyListDecoder()
-            let settings = try decoder.decode(BottleSettings.self, from: Data(contentsOf: metadataURL))
+            let settings = BottleSettings()
+            try FileManager.default.createDirectory(
+                at: metadataURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
             try settings.encode(to: metadataURL)
             return settings
         }
 
-        let decoder = PropertyListDecoder()
         let data = try Data(contentsOf: metadataURL)
-        var settings = try decoder.decode(BottleSettings.self, from: data)
+        var settings: BottleSettings
+        do {
+            settings = try PropertyListDecoder().decode(BottleSettings.self, from: data)
+        } catch {
+            // Keep the unreadable file for recovery instead of overwriting it
+            // with defaults on the next save.
+            let path = metadataURL.path(percentEncoded: false)
+            let message = "Failed to decode bottle settings at \(path): \(error)"
+            Logger.wineKit.error("\(message, privacy: .public)")
+            quarantine(metadataURL)
+            settings = BottleSettings()
+            try settings.encode(to: metadataURL)
+            return settings
+        }
 
         guard settings.fileVersion == BottleSettings.defaultFileVersion else {
             Logger.wineKit.warning("Invalid file version `\(settings.fileVersion)`")
+            quarantine(metadataURL)
             settings = BottleSettings()
             try settings.encode(to: metadataURL)
             return settings
@@ -268,6 +286,27 @@ public struct BottleSettings: Codable, Equatable {
         }
 
         return settings
+    }
+
+    /// Move an unreadable settings file aside so a later save cannot destroy it.
+    private static func quarantine(_ metadataURL: URL) {
+        let name = metadataURL.deletingPathExtension().lastPathComponent
+        let stamp = Int(Date.now.timeIntervalSince1970)
+        let suffix = UUID().uuidString.prefix(8)
+        let backup = metadataURL
+            .deletingLastPathComponent()
+            .appending(path: "\(name).corrupt-\(stamp)-\(suffix)")
+            .appendingPathExtension("plist")
+        do {
+            try FileManager.default.moveItem(at: metadataURL, to: backup)
+            Logger.wineKit.warning(
+                "Quarantined bottle settings at \(backup.path(percentEncoded: false), privacy: .public)"
+            )
+        } catch {
+            Logger.wineKit.error(
+                "Failed to quarantine bottle settings: \(error, privacy: .public)"
+            )
+        }
     }
 
     func encode(to metadataUrl: URL) throws {

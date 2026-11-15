@@ -67,6 +67,7 @@ struct ConfigView: View {
                             }
                         }
                 }
+                EditMenuToggle(bottle: bottle)
                 SettingItemView(title: "config.retinaMode", loadingState: retinaModeLoadingState) {
                     Toggle("config.retinaMode", isOn: $retinaMode)
                         .onChange(of: retinaMode, { _, newValue in

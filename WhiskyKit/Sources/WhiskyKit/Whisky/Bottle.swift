@@ -58,21 +58,16 @@ public final class Bottle: ObservableObject, Equatable, Hashable, Identifiable, 
             self.settings = BottleSettings()
         }
 
-        // Get rid of duplicates and pins that reference removed files
+        // Drop duplicate/URL-less pins, but keep pins whose program is
+        // temporarily missing (unmounted volume, moved file). The bottle view
+        // filters those for display; deleting them here destroyed settings.
         var found: Set<URL> = []
-        self.settings.pins = self.settings.pins.filter { pin in
+        let dedupedPins = self.settings.pins.filter { pin in
             guard let url = pin.url else { return false }
-            guard !found.contains(url) else { return false }
-            found.insert(url)
-            let urlPath = url.path(percentEncoded: false)
-            let volume: URL?
-            do {
-                volume = try url.resourceValues(forKeys: [.volumeURLKey]).volume ?? nil
-            } catch {
-                volume = nil
-            }
-            let legallyRemoved = pin.removable && volume == nil
-            return FileManager.default.fileExists(atPath: urlPath) || legallyRemoved
+            return found.insert(url).inserted
+        }
+        if dedupedPins.count != self.settings.pins.count {
+            self.settings.pins = dedupedPins
         }
     }
 

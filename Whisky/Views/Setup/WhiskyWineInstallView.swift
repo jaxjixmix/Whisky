@@ -21,6 +21,7 @@ import WhiskyKit
 
 struct WhiskyWineInstallView: View {
     @State var installing: Bool = true
+    @State private var installError: String?
     @Binding var tarLocation: URL
     @Binding var path: [SetupStage]
     @Binding var showSetup: Bool
@@ -39,6 +40,19 @@ struct WhiskyWineInstallView: View {
                     ProgressView()
                         .progressViewStyle(.circular)
                         .frame(width: 80)
+                } else if let installError {
+                    VStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title)
+                            .foregroundStyle(.yellow)
+                        Text(installError)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(3)
+                        Button("button.retry") {
+                            startInstall()
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
                 } else {
                     Image(systemName: "checkmark.circle")
                         .resizable()
@@ -51,13 +65,36 @@ struct WhiskyWineInstallView: View {
         }
         .frame(width: 400, height: 200)
         .onAppear {
-            Task.detached {
-                await WhiskyWineInstaller.install(from: tarLocation)
-                await MainActor.run {
-                    installing = false
+            startInstall()
+        }
+    }
+
+    private func startInstall() {
+        installing = true
+        installError = nil
+
+        let tarball = tarLocation
+        Task.detached {
+            let result: Result<Void, Error>
+            do {
+                try WhiskyWineInstaller.install(from: tarball)
+                result = .success(())
+            } catch {
+                result = .failure(error)
+            }
+
+            await MainActor.run {
+                installing = false
+                switch result {
+                case .success:
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(1))
+                        proceed()
+                    }
+                case .failure(let error):
+                    installError = (error as? LocalizedError)?.errorDescription
+                        ?? String(describing: error)
                 }
-                sleep(2)
-                await proceed()
             }
         }
     }

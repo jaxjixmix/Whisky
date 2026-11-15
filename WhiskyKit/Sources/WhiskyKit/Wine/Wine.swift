@@ -25,7 +25,7 @@ public class Wine {
     /// Path to the `wine64` binary
     public static let wineBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wine64")
     /// Parth to the `wineserver` binary
-    private static let wineserverBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wineserver")
+    static let wineserverBinary: URL = WhiskyWineInstaller.binFolder.appending(path: "wineserver")
 
     /// Run a process on a executable file given by the `executableURL`
     private static func runProcess(
@@ -114,37 +114,30 @@ public class Wine {
     public static func generateRunCommand(
         at url: URL, bottle: Bottle, args: String, environment: [String: String]
     ) -> String {
-        var wineCmd = "\(wineBinary.esc) start /unix \(url.esc) \(args)"
+        let words = [
+            wineBinary.path(percentEncoded: false),
+            "start",
+            "/unix",
+            url.path(percentEncoded: false)
+        ]
+        var wineCmd = ShellQuoting.commandLine(words)
+
+        // `args` is user-authored command-line text (it may contain several
+        // arguments and quotes); keep it verbatim.
+        if !args.isEmpty {
+            wineCmd += " " + args
+        }
+
         let env = constructWineEnvironment(for: bottle, environment: environment)
-        for environment in env {
-            wineCmd = "\(environment.key)=\"\(environment.value)\" " + wineCmd
+        for (key, value) in env {
+            guard ShellQuoting.isValidEnvironmentKey(key) else {
+                Logger.wineKit.warning("Skipping invalid environment key '\(key, privacy: .public)'")
+                continue
+            }
+            wineCmd = "\(ShellQuoting.assignment(key, value)) " + wineCmd
         }
 
         return wineCmd
-    }
-
-    public static func generateTerminalEnvironmentCommand(bottle: Bottle) -> String {
-        var cmd = """
-        export PATH=\"\(WhiskyWineInstaller.binFolder.path):$PATH\"
-        export WINE=\"wine64\"
-        alias wine=\"wine64\"
-        alias winecfg=\"wine64 winecfg\"
-        alias msiexec=\"wine64 msiexec\"
-        alias regedit=\"wine64 regedit\"
-        alias regsvr32=\"wine64 regsvr32\"
-        alias wineboot=\"wine64 wineboot\"
-        alias wineconsole=\"wine64 wineconsole\"
-        alias winedbg=\"wine64 winedbg\"
-        alias winefile=\"wine64 winefile\"
-        alias winepath=\"wine64 winepath\"
-        """
-
-        let env = constructWineEnvironment(for: bottle, environment: constructWineEnvironment(for: bottle))
-        for environment in env {
-            cmd += "\nexport \(environment.key)=\"\(environment.value)\""
-        }
-
-        return cmd
     }
 
     /// Run a `wineserver` command with the given arguments and return the output result
@@ -162,7 +155,7 @@ public class Wine {
             case .message(let message), .error(let message):
                 return message
             }
-        }.joined()
+        }.joined(separator: "\n")
     }
 
     @discardableResult
@@ -189,7 +182,7 @@ public class Wine {
             }
         }
 
-        return result.joined()
+        return result.joined(separator: "\n")
     }
 
     public static func wineVersion() async throws -> String {
@@ -226,7 +219,7 @@ public class Wine {
     }
 
     /// Construct an environment merging the bottle values with the given values
-    private static func constructWineEnvironment(
+    static func constructWineEnvironment(
         for bottle: Bottle, environment: [String: String] = [:]
     ) -> [String: String] {
         var result: [String: String] = [
@@ -241,7 +234,7 @@ public class Wine {
     }
 
     /// Construct an environment merging the bottle values with the given values
-    private static func constructWineServerEnvironment(
+    static func constructWineServerEnvironment(
         for bottle: Bottle, environment: [String: String] = [:]
     ) -> [String: String] {
         var result: [String: String] = [
@@ -277,20 +270,23 @@ extension Wine {
         }
 
         let dateString = Date.now.ISO8601Format()
-        let fileURL = Self.logsFolder.appending(path: dateString).appendingPathExtension("log")
+        // Two runs in the same second used to overwrite each other's log.
+        let fileURL = Self.logsFolder
+            .appending(path: "\(dateString)-\(UUID().uuidString.prefix(8))")
+            .appendingPathExtension("log")
         try "".write(to: fileURL, atomically: true, encoding: .utf8)
         return try FileHandle(forWritingTo: fileURL)
     }
 }
 
 extension Wine {
-    private enum RegistryKey: String {
+    enum RegistryKey: String {
         case currentVersion = #"HKLM\Software\Microsoft\Windows NT\CurrentVersion"#
         case macDriver = #"HKCU\Software\Wine\Mac Driver"#
         case desktop = #"HKCU\Control Panel\Desktop"#
     }
 
-    private static func addRegistryKey(
+    static func addRegistryKey(
         bottle: Bottle, key: String, name: String, data: String, type: RegistryType
     ) async throws {
         try await runWine(

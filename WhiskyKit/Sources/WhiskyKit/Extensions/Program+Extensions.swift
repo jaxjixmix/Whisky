@@ -53,7 +53,7 @@ extension Program {
     }
 
     public func runInTerminal() {
-        let wineCmd = generateTerminalCommand().replacingOccurrences(of: "\\", with: "\\\\")
+        let wineCmd = generateTerminalCommand().appleScriptQuoted
 
         let script = """
         tell application "Terminal"

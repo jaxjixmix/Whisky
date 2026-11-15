@@ -56,7 +56,7 @@ struct ContentView: View {
                 Button {
                     bottleVM.loadBottles()
                     if let bottle = bottleVM.bottles.first(where: { $0.url == selected }) {
-                        bottle.updateInstalledPrograms()
+                        Task { await bottle.updateInstalledPrograms() }
                     }
                     triggerRefresh.toggle()
                     withAnimation(.default) {
@@ -88,6 +88,16 @@ struct ContentView: View {
         .handlesExternalEvents(preferring: [], allowing: ["*"])
         .onOpenURL { url in
             openedFileURL = url
+        }
+        .alert("create.error.title", isPresented: Binding(
+            get: { bottleVM.creationError != nil },
+            set: { if !$0 { bottleVM.creationError = nil } }
+        )) {
+            Button("button.ok") {
+                bottleVM.creationError = nil
+            }
+        } message: {
+            Text(bottleVM.creationError ?? "")
         }
         .task {
             bottleVM.loadBottles()
