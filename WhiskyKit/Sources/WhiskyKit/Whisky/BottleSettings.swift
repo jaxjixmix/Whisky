@@ -292,7 +292,7 @@ public struct BottleSettings: Codable, Equatable {
     private static func quarantine(_ metadataURL: URL) {
         let backup = metadataURL
             .deletingLastPathComponent()
-            .appending(path: "\(metadataURL.deletingPathExtension().lastPathComponent).corrupt-\(Int(Date.now.timeIntervalSince1970))")
+            .appending(path: "\(metadataURL.deletingPathExtension().lastPathComponent).corrupt-\(Int(Date.now.timeIntervalSince1970))-\(UUID().uuidString.prefix(8))")
             .appendingPathExtension("plist")
         do {
             try FileManager.default.moveItem(at: metadataURL, to: backup)
