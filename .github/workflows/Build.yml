@@ -32,5 +32,5 @@ jobs:
       - name: Build app
         run: |
           xcodebuild -project Whisky.xcodeproj -scheme Whisky \
-            -configuration Debug -derivedDataPath build \
+            -configuration Debug -derivedDataPath "$RUNNER_TEMP/whisky-build" \
             CODE_SIGNING_ALLOWED=NO build
