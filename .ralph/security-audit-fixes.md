@@ -26,3 +26,9 @@ Full details: `.ralph/security-audit-fixes.md` (read first).
 - No app build possible (no Xcode); typecheck is the gate.
 - Keep SwiftLint limits (line 120, function 50 code lines, file 400, headers).
 - Do not claim the app target was built.
+## Final Verification
+
+- Command: `cd WhiskyKit && swift build && swift run -Xswiftc -enable-testing WhiskyKitSelfTest && swift run -Xswiftc -enable-testing WhiskyKitSecuritySelfTest && cd .. && ./scripts/typecheck-app.sh`
+- Result: WhiskyKit builds; 12/12 stability tests pass; 10/10 security tests pass; app sources typecheck; `git diff --check` clean; SwiftLint passes on PR #10.
+- App target was not built or run (no Xcode); no real Wine runtime/server test.
+- Release prerequisite: publish a signed `WhiskyWineVersion.plist` with `sha256` and a base64 Ed25519 `signature` over `WhiskyWine|<version>|<sha256>|<downloadURL>`; release builds refuse unsigned runtimes.
